@@ -15,13 +15,11 @@
 
 - [x] 1.语音合成综述
 - [x] 2.语音合成开源项目和数据集
-- [x] 3.Text-to-spectrogram
-- [x] 4.End-to-End Models
-- [x] 5.Attention Methods
-- [x] 6.Speaker Encoder
-- [x] 7.Vocoders
-- [x] 8.语音克隆
-- [x] 9.其他
+- [ ] 3.Text-to-spectrogram
+- [ ] 4.End-to-End Models
+- [ ] 3.Vocoders
+- [ ] 4.语音克隆
+- [ ] 5.其他
 
 
 

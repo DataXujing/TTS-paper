@@ -25,3 +25,15 @@
 
 
 ### 8.UnivNet
+
+
+<!-- MelGAN: paper
+MultiBandMelGAN: paper
+ParallelWaveGAN: paper
+GAN-TTS discriminators: paper
+WaveNet
+WaveRNN: origin
+WaveGrad: paper
+HiFiGAN: Hifi-gan: generative adversarial networks for efficient and high fidelity speech synthesis.
+UnivNet: paper
+WaveGlow -->

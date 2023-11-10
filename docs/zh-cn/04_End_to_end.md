@@ -2,8 +2,9 @@
 
 
 
-<!-- ⓍTTS: blog
-VITS: paper
-🐸 YourTTS: paper
-🐢 Tortoise: orig. repo
-🐶 Bark: orig. repo -->
+<!-- VITS: paper
+Char2Wav, 
+ClariNet,
+ FastSpeech2s,
+ EATS, 
+Wave-Tacotron,  -->
