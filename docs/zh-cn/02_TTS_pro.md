@@ -43,6 +43,10 @@
 
 [7]. <https://github.com/Stardust-minus/Bert-VITS2>
 
+[8]. <http://mp.weixin.qq.com/s?__biz=MzkwMzMzNTgzNQ==&mid=2247484509&idx=1&sn=1ddf2e5e74e6bc81fbbf42a5cbb919ab&chksm=c0969ea9f7e117bfe8a0b6fbaa868fdbc28ee574fa690ed2387d7124039505d9a62250cd5e26&mpshare=1&scene=1&srcid=1110ejmMWuV30Qhc9nmhSvEz&sharer_shareinfo=e042601aeafdc2dd754169116324346c&sharer_shareinfo_first=e042601aeafdc2dd754169116324346c#rd>
+
+[9]. <https://github.com/netease-youdao/EmotiVoice>
+
 
 
 ### 3.TTS常用开源数据集
