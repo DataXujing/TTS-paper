@@ -26,6 +26,9 @@
 [9]. <https://github.com/k2-fsa/next-gen-kaldi-wechat/blob/master/2023-10-24-tts-runtime.md>
 
 
+<!-- https://mp.weixin.qq.com/s/GHkc1DN4Dozzz50Fq8m3kQ -->
+
+
 
 ### 2.GitHub开源的一些语音克隆的项目
 

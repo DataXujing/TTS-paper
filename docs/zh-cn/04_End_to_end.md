@@ -1,10 +1,21 @@
 ## End-to-End Models
 
+### 1. VITS
 
 
-<!-- VITS: paper
-Char2Wav, 
-ClariNet,
- FastSpeech2s,
- EATS, 
-Wave-Tacotron,  -->
+### 2. Char2Wav
+
+
+### 3. ClariNet
+
+
+### 4. FastSpeech 2s
+
+
+### 5. EATS
+
+
+
+### 6. Wave-Tacotron
+
+
