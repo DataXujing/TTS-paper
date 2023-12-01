@@ -25,6 +25,10 @@
 
 [9]. <https://github.com/k2-fsa/next-gen-kaldi-wechat/blob/master/2023-10-24-tts-runtime.md>
 
+[10]. <https://github.com/wenet-e2e/speech-synthesis-paper>
+
+[11]. <https://github.com/wenet-e2e/wetts>
+
 
 <!-- https://mp.weixin.qq.com/s/GHkc1DN4Dozzz50Fq8m3kQ -->
 

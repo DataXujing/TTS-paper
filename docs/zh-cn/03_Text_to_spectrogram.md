@@ -118,7 +118,474 @@ Tacotron的骨干部分是一个有注意力机制的(Bahdanau et al.,2014; Viny
 
 !> https://arxiv.org/abs/1712.05884
 
+!> NVIDIA/Tacotron2：https://github.com/NVIDIA/tacotron2/
 
+<!-- https://github.com/JasonWei512/Tacotron-2-Chinese -->
+
+<!-- https://www.bilibili.com/video/BV1uh411m7Y2/?spm_id_from=333.337.search-card.all.click&vd_source=def8c63d9c5f9bf987870bf827bfcb3d
+ -->
+
+ <!-- NVIDIA/Tacotron2：https://github.com/NVIDIA/tacotron2/ -->
+
+ <!-- https://wmathor.com/index.php/archives/1478/ -->
+
+ <!-- https://zhuanlan.zhihu.com/p/103521105 -->
+ <!-- https://www.bilibili.com/video/BV1tb4y1y7H9/?spm_id_from=333.788&vd_source=def8c63d9c5f9bf987870bf827bfcb3d -->
+
+ <!-- https://blog.csdn.net/qq_37236745/article/details/108846686 -->
+
+#### 1.概述
+
+Tacotron2是由Google Brain在2017年提出来的一个End-to-End语音合成框架。模型从下到上可以看作由两部分组成：
+
++ 声谱预测网络：一个Encoder-Attention-Decoder网络，用于将输入的字符序列预测为梅尔频谱的帧序列
++ 声码器（vocoder）：一个WaveNet的修订版，用于将预测的梅尔频谱帧序列产生时域波形
+
+<div align=center>
+    <img src="zh-cn/img/ch3/02/p3.png" /> 
+</div>
+
+详细的结构如下图：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/02/p1.png" /> 
+</div>
+
+<div align=center>
+    <img src="zh-cn/img/ch3/02/p2.png" /> 
+</div>
+
+#### 2.编码器
+
+<div align=center>
+    <img src="zh-cn/img/ch3/02/p4.png" /> 
+</div>
+
+Encoder的输入是多个句子，每个句子的基本单位是character，例如
+
++ 英文`"hello world"`就会被拆成`"h e l l o w o r l d"`作为输入
++ 中文`"你好世界"`则会先把拼音标识出来得到`"ni hao shi jie"`，然后进一步按照声韵母的方式来分割成`"n i h ao sh i j ie"`，或者直接按照类似英文的方式分割成`"n i h a o s h i j i e"`
+
+Encoder的具体流程为：
+
+1. 输入的数据维度为`[batch_size, char_seq_length]`
+2. 使用512维的Character Embedding，把每个character映射为512维的向量，输出维度为`[batch_size, char_seq_length, 512]`
+3. 3个一维卷积，每个卷积包括512个kernel，每个kernel的大小是`5*1`（即每次看5个characters）。每做完一次卷积，进行一次BatchNorm、ReLU以及Dropout。输出维度为`[batch_size, char_seq_length, 512]`（为了保证每次卷积的维度不变，因此使用了pad）
+4. 上面得到的输出，扔给一个单层BiLSTM，隐藏层维度是256，由于这是双向的LSTM，因此最终输出维度是`[batch_size, char_seq_length, 512]`
+
+```python
+class Encoder(nn.Module):
+    def __init__(self, hparams):
+        super(Encoder, self).__init__()
+
+        convolutions = []
+        for _ in range(hparams.encoder_n_convolutions):
+            conv_layer = nn.Sequential(
+                ConvNorm(hparams.encoder_embedding_dim,
+                         hparams.encoder_embedding_dim,x
+                         kernel_size=hparams.encoder_kernel_size, stride=1,
+                         padding=int((hparams.encoder_kernel_size - 1) / 2),
+                         dilation=1, w_init_gain='relu'),
+                nn.BatchNorm1d(hparams.encoder_embedding_dim))
+            convolutions.append(conv_layer)
+        self.convolutions = nn.ModuleList(convolutions)
+
+        self.lstm = nn.LSTM(hparams.encoder_embedding_dim,
+                            int(hparams.encoder_embedding_dim / 2), 1,
+                            batch_first=True, bidirectional=True)
+
+```
+
+```python
+class ConvNorm(torch.nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=1, stride=1,
+                 padding=None, dilation=1, bias=True, w_init_gain='linear'):
+        super(ConvNorm, self).__init__()
+        if padding is None:
+            assert(kernel_size % 2 == 1)
+            padding = int(dilation * (kernel_size - 1) / 2)
+
+        self.conv = torch.nn.Conv1d(in_channels, out_channels,
+                                    kernel_size=kernel_size, stride=stride,
+                                    padding=padding, dilation=dilation,
+                                    bias=bias)
+                                    
+        torch.nn.init.xavier_uniform_(
+            self.conv.weight, gain=torch.nn.init.calculate_gain(w_init_gain))
+```
+
+#### 3.注意力机制
+
+<div align=center>
+    <img src="zh-cn/img/ch3/02/p5.png" width=70% /> 
+</div>
+
+上图描述了第一次做attention时的输入和输出。其中，$y_0$是PreNet初始输入`<S>`的编码表示，$c_0$是当前的"注意力上下文"。初始第一步时，$y_0$和$c_0$都被初始化为全0向量，然后将$y_0$和$c_0$拼接起来，得到一个768维的向量$y_{0,c}$，将该向量与attention_hidden和attention_cell一起作为LSTMcell的输入（attention_hidden其实就是LSTMcell的hidden_state，attention_cell其实就是LSTMcell的cell_state）。得到的结果是$h_1$和attention_cell，这里没有给attention_cell单独起名字，主要考虑其是"打酱油"的，因为除了attention_rnn之外，其它地方没有用到attention_cell.
+
+<div align=center>
+    <img src="zh-cn/img/ch3/02/p6.png" width=70% /> 
+</div>
+
+Attention_Layer一共接受五个输入：
+
+1. $h_1$是和mel谱相关的变量
+2. $m$来自source character sequence编码的"记忆"
+3. $m^{'}$是$m$通过一个Linear后得到的
+4. attention_weights_cat是将历史（上一时刻）的attention_weights和attention_weights_cum拼接得到的
+5. mask全false，基本没用
+
+计算细节如下：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/02/p7.png" width=70% /> 
+</div>
+
+<div align=center>
+    <img src="zh-cn/img/ch3/02/p8.png" /> 
+</div>
+
+get_alignment_energies函数图示如下：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/02/p9.png" width=70% /> 
+</div>
+
+图中Location_Layer的代码如下：
+
+```python
+class LocationLayer(nn.Module):
+    def __init__(self, attention_n_filters, attention_kernel_size, # 32, 31
+                 attention_dim): # 128
+        super(LocationLayer, self).__init__()
+        padding = int((attention_kernel_size - 1) / 2) # padding=15
+        self.location_conv = ConvNorm(2, attention_n_filters,
+                                      kernel_size=attention_kernel_size,
+                                      padding=padding, bias=False, stride=1,
+                                      dilation=1)
+        self.location_dense = LinearNorm(attention_n_filters, attention_dim,
+                                         bias=False, w_init_gain='tanh')
+
+    def forward(self, attention_weights_cat): # [1, 2, 151]
+        processed_attention = self.location_conv(attention_weights_cat) # [1, 32, 151]
+        processed_attention = processed_attention.transpose(1, 2) # [1, 151, 32]
+        processed_attention = self.location_dense(processed_attention) # [1, 151, 128]
+        return processed_attention
+
+```
+
+Attention的代码如下：
+
+```python
+class Attention(nn.Module):
+    def __init__(self, attention_rnn_dim, embedding_dim, attention_dim,
+                 attention_location_n_filters, attention_location_kernel_size):
+        super(Attention, self).__init__()
+        self.query_layer = LinearNorm(attention_rnn_dim, attention_dim,
+                                      bias=False, w_init_gain='tanh')
+        self.memory_layer = LinearNorm(embedding_dim, attention_dim, bias=False,
+                                       w_init_gain='tanh')
+        self.v = LinearNorm(attention_dim, 1, bias=False)
+        self.location_layer = LocationLayer(attention_location_n_filters,
+                                            attention_location_kernel_size,
+                                            attention_dim)
+        self.score_mask_value = -float("inf")
+
+    def get_alignment_energies(self, query, processed_memory,
+                               attention_weights_cat):
+        """
+        PARAMS
+        ------
+        query: decoder output (batch, n_mel_channels * n_frames_per_step)
+        processed_memory: processed encoder outputs (B, T_in, attention_dim)
+        attention_weights_cat: cumulative and prev. att weights (B, 2, max_time)
+
+        RETURNS
+        -------
+        alignment (batch, max_time)
+        """
+
+        processed_query = self.query_layer(query.unsqueeze(1))
+        processed_attention_weights = self.location_layer(attention_weights_cat)
+        energies = self.v(torch.tanh(
+            processed_query + processed_attention_weights + processed_memory))
+
+        energies = energies.squeeze(-1)
+        return energies
+
+    def forward(self, attention_hidden_state, memory, processed_memory,
+                attention_weights_cat, mask):
+        """
+        PARAMS
+        ------
+        attention_hidden_state: attention rnn last output
+        memory: encoder outputs
+        processed_memory: processed encoder outputs
+        attention_weights_cat: previous and cummulative attention weights
+        mask: binary mask for padded data
+        """
+        alignment = self.get_alignment_energies(
+            attention_hidden_state, processed_memory, attention_weights_cat)
+
+        if mask is not None:
+            alignment.data.masked_fill_(mask, self.score_mask_value)
+
+        attention_weights = F.softmax(alignment, dim=1)
+        attention_context = torch.bmm(attention_weights.unsqueeze(1), memory)
+        attention_context = attention_context.squeeze(1)
+
+        return attention_context, attention_weights
+```
+
+
+#### 4.解码器
+
+<div align=center>
+    <img src="zh-cn/img/ch3/02/p10.png" width=50%/> 
+</div>
+
+解码器是一个自回归结构，它从编码的输入序列预测出声谱图，一次预测r帧
+
+1. 上一步预测出的频谱首先传入一个PreNet，它包含两层神经网络，PreNet作为一个信息瓶颈层（bottleneck），对于学习注意力是必要的
+2. PreNet的输出和Attention Context向量拼接在一起，传给一个含有1024个单元的两层LSTM。LSTM的输出再次和Attention Context向量拼接在一起，然后经过一个线性投影来预测目标频谱
+3. 最后，目标频谱帧经过一个5层卷积的PostNet（后处理网络），再将该输出和Linear Projection的输出相加（残差连接）作为最终的输出
+4. 另一边，LSTM的输出和Attention Context向量拼接在一起，投影成标量后传给sigmoid激活函数，来预测输出序列是否已完成预测
+
+PreNet层的图示及代码如下所示：
+
+<div align=center >
+    <img src="zh-cn/img/ch3/02/p11.png" width=30%/> 
+</div>
+
+```python
+class LinearNorm(torch.nn.Module):
+    def __init__(self, in_dim, out_dim, bias=True, w_init_gain='linear'):
+        super(LinearNorm, self).__init__()
+        self.linear_layer = torch.nn.Linear(in_dim, out_dim, bias=bias)
+
+        torch.nn.init.xavier_uniform_(
+            self.linear_layer.weight,
+            gain=torch.nn.init.calculate_gain(w_init_gain))
+
+    def forward(self, x):
+        return self.linear_layer(x)
+
+class Prenet(nn.Module):
+    def __init__(self, in_dim, sizes):
+        super(Prenet, self).__init__()
+        in_sizes = [in_dim] + sizes[:-1]
+        self.layers = nn.ModuleList(
+            [LinearNorm(in_size, out_size, bias=False)
+             for (in_size, out_size) in zip(in_sizes, sizes)])
+
+    def forward(self, x):
+        for linear in self.layers:
+            x = F.dropout(F.relu(linear(x)), p=0.5, training=True)
+        return x
+```
+
+PostNet层的图示及代码如下所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/02/p12.png" width=50%/> 
+</div>
+
+```python
+class Postnet(nn.Module):
+    """Postnet
+        - Five 1-d convolution with 512 channels and kernel size 5
+    """
+
+    def __init__(self, hparams):
+        super(Postnet, self).__init__()
+        self.convolutions = nn.ModuleList()
+
+        self.convolutions.append(
+            nn.Sequential(
+                ConvNorm(hparams.n_mel_channels, hparams.postnet_embedding_dim,
+                         kernel_size=hparams.postnet_kernel_size, stride=1,
+                         padding=int((hparams.postnet_kernel_size - 1) / 2),
+                         dilation=1, w_init_gain='tanh'),
+                nn.BatchNorm1d(hparams.postnet_embedding_dim))
+        )
+
+        for i in range(1, hparams.postnet_n_convolutions - 1):
+            self.convolutions.append(
+                nn.Sequential(
+                    ConvNorm(hparams.postnet_embedding_dim,
+                             hparams.postnet_embedding_dim,
+                             kernel_size=hparams.postnet_kernel_size, stride=1,
+                             padding=int((hparams.postnet_kernel_size - 1) / 2),
+                             dilation=1, w_init_gain='tanh'),
+                    nn.BatchNorm1d(hparams.postnet_embedding_dim))
+            )
+
+        self.convolutions.append(
+            nn.Sequential(
+                ConvNorm(hparams.postnet_embedding_dim, hparams.n_mel_channels,
+                         kernel_size=hparams.postnet_kernel_size, stride=1,
+                         padding=int((hparams.postnet_kernel_size - 1) / 2),
+                         dilation=1, w_init_gain='linear'),
+                nn.BatchNorm1d(hparams.n_mel_channels))
+            )
+
+    def forward(self, x):
+        for i in range(len(self.convolutions) - 1):
+            x = F.dropout(torch.tanh(self.convolutions[i](x)), 0.5, self.training)
+        x = F.dropout(self.convolutions[-1](x), 0.5, self.training)
+
+        return x
+```
+
+从下面Decoder初始化部分可以看出Decoder由prenet，attention_rnn，attention_layer，decoder_rnn，linear_projection，gate_layer组成
+
+```python
+class Decoder(nn.Module):
+    def __init__(self, hparams):
+        super(Decoder, self).__init__()
+        self.n_mel_channels = hparams.n_mel_channels
+        self.n_frames_per_step = hparams.n_frames_per_step
+        self.encoder_embedding_dim = hparams.encoder_embedding_dim
+        self.attention_rnn_dim = hparams.attention_rnn_dim
+        self.decoder_rnn_dim = hparams.decoder_rnn_dim
+        self.prenet_dim = hparams.prenet_dim
+        self.max_decoder_steps = hparams.max_decoder_steps
+        self.gate_threshold = hparams.gate_threshold
+        self.p_attention_dropout = hparams.p_attention_dropout
+        self.p_decoder_dropout = hparams.p_decoder_dropout
+
+        self.prenet = Prenet(
+            hparams.n_mel_channels * hparams.n_frames_per_step,
+            [hparams.prenet_dim, hparams.prenet_dim])
+
+        self.attention_rnn = nn.LSTMCell(
+            hparams.prenet_dim + hparams.encoder_embedding_dim,
+            hparams.attention_rnn_dim)
+
+        self.attention_layer = Attention(
+            hparams.attention_rnn_dim, hparams.encoder_embedding_dim,
+            hparams.attention_dim, hparams.attention_location_n_filters,
+            hparams.attention_location_kernel_size)
+
+        self.decoder_rnn = nn.LSTMCell(
+            hparams.attention_rnn_dim + hparams.encoder_embedding_dim,
+            hparams.decoder_rnn_dim, 1)
+
+        self.linear_projection = LinearNorm(
+            hparams.decoder_rnn_dim + hparams.encoder_embedding_dim,
+            hparams.n_mel_channels * hparams.n_frames_per_step)
+
+        self.gate_layer = LinearNorm(
+            hparams.decoder_rnn_dim + hparams.encoder_embedding_dim, 1,
+            bias=True, w_init_gain='sigmoid')
+```
+
+#### 5.总结
+
+Tacotron2模型的完整网络结构：
+
+```python
+Tacotron2(
+  (embedding): Embedding(148, 512)
+  (encoder): Encoder(
+    (convolutions): ModuleList(
+      (0): Sequential(
+        (0): ConvNorm(
+          (conv): Conv1d(512, 512, kernel_size=(5,), stride=(1,), padding=(2,))
+        )
+        (1): BatchNorm1d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      )
+      (1): Sequential(
+        (0): ConvNorm(
+          (conv): Conv1d(512, 512, kernel_size=(5,), stride=(1,), padding=(2,))
+        )
+        (1): BatchNorm1d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      )
+      (2): Sequential(
+        (0): ConvNorm(
+          (conv): Conv1d(512, 512, kernel_size=(5,), stride=(1,), padding=(2,))
+        )
+        (1): BatchNorm1d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      )
+    )
+    (lstm): LSTM(512, 256, batch_first=True, bidirectional=True)
+  )
+  (decoder): Decoder(
+    (prenet): Prenet(
+      (layers): ModuleList(
+        (0): LinearNorm(
+          (linear_layer): Linear(in_features=80, out_features=256, bias=False)
+        )
+        (1): LinearNorm(
+          (linear_layer): Linear(in_features=256, out_features=256, bias=False)
+        )
+      )
+    )
+    (attention_rnn): LSTMCell(768, 1024)
+    (attention_layer): Attention(
+      (query_layer): LinearNorm(
+        (linear_layer): Linear(in_features=1024, out_features=128, bias=False)
+      )
+      (memory_layer): LinearNorm(
+        (linear_layer): Linear(in_features=512, out_features=128, bias=False)
+      )
+      (v): LinearNorm(
+        (linear_layer): Linear(in_features=128, out_features=1, bias=False)
+      )
+      (location_layer): LocationLayer(
+        (location_conv): ConvNorm(
+          (conv): Conv1d(2, 32, kernel_size=(31,), stride=(1,), padding=(15,), bias=False)
+        )
+        (location_dense): LinearNorm(
+          (linear_layer): Linear(in_features=32, out_features=128, bias=False)
+        )
+      )
+    )
+    (decoder_rnn): LSTMCell(1536, 1024, bias=1)
+    (linear_projection): LinearNorm(
+      (linear_layer): Linear(in_features=1536, out_features=80, bias=True)
+    )
+    (gate_layer): LinearNorm(
+      (linear_layer): Linear(in_features=1536, out_features=1, bias=True)
+    )
+  )
+  (postnet): Postnet(
+    (convolutions): ModuleList(
+      (0): Sequential(
+        (0): ConvNorm(
+          (conv): Conv1d(80, 512, kernel_size=(5,), stride=(1,), padding=(2,))
+        )
+        (1): BatchNorm1d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      )
+      (1): Sequential(
+        (0): ConvNorm(
+          (conv): Conv1d(512, 512, kernel_size=(5,), stride=(1,), padding=(2,))
+        )
+        (1): BatchNorm1d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      )
+      (2): Sequential(
+        (0): ConvNorm(
+          (conv): Conv1d(512, 512, kernel_size=(5,), stride=(1,), padding=(2,))
+        )
+        (1): BatchNorm1d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      )
+      (3): Sequential(
+        (0): ConvNorm(
+          (conv): Conv1d(512, 512, kernel_size=(5,), stride=(1,), padding=(2,))
+        )
+        (1): BatchNorm1d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      )
+      (4): Sequential(
+        (0): ConvNorm(
+          (conv): Conv1d(512, 80, kernel_size=(5,), stride=(1,), padding=(2,))
+        )
+        (1): BatchNorm1d(80, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+      )
+    )
+  )
+)
+```
+
+------
 
 <!-- #SPP -->
 ### 3. Neural HMM TTS
