@@ -588,10 +588,133 @@ Tacotron2(
 ------
 
 <!-- #SPP -->
-### 3. Neural HMM TTS
+### 3. Neural HMM TTS: Neural HMMS are All You Need
 
 !> https://arxiv.org/abs/2108.13320
 
+!> https://github.com/shivammehta25/Neural-HMM
+
+!> https://shivammehta25.github.io/Neural-HMM/
+
+#### Abstract
+
+基于seq2seq的神经网络的TTS模型已经表现比基于统计的（SPSS）的HMM模型要好很多了。但是基于神经网络的模型不是概率模型，使用了非单调的Attention对齐。这种Attention的方式导致训练时间正常并且有可能出现合成出来的语音是语无伦次胡言乱语的。本论文结合了传统的基于HMM的概率模型和神经网络模型解决这些问题，在神经网络中通过一个从左向右的自回归是的HMM代替Attention。我们调整了Tacotron2得到一个HMM-based Neural TTS Model使用单调的对齐方式，使用全序列的对数似然函数训练模型而不是近似方法，在较少的训练数据和训练步数上由于Tacotron2,并且在不需要PostNet也可以生成有竞争力自然度的语音，并且可以容易的调整语速。
+
+#### 1.Introduction
+
+过去十年TTS技术进步巨大，随着该领域的发展，输出语音质量出现了许多阶跃变化。统计参数语音合成
+（SPSS）基于隐马尔可夫模型（HMM），现在已经
+很大程度上被神经TTS所取代。与基于信号处理的声码器相比，波形级深度学习极大地提高了分段质量，而具有注意力的序列到序列模型，例如Tacotron，显示出极大地改善了韵律。结合起来，如Tacotron 2所述，这些创新产生了合成语音，其自然度有时可以与录音语音相媲美。
+
+然而，并不是TTS系统的所有方面都有所改进。将具有位置特征的深度学习集成到基于HMM的TTS中提高了自然度，但牺牲了同时学习说话和对齐的能力，而需要外部强制对齐器。基于注意力的神经TTS系统重新引入了学习对齐的能力，但不以概率为基础，需要更多的数据和时间才能开始说话。此外，它们的非单调注意力机制并不能强制执行语音的一致顺序。因此，合成容易出现跳跃和结结巴巴的伪影，并可能灾难性地崩溃，导致难以理解的胡言乱语。
+
+在这篇文章中，我们1）提出了基于HMM的和神经网络的
+TTS方法可以结合起来，以获得两个领域的优点。我们2）通过描述神经TTS架构来支持这一说法
+基于Tacotron 2，但注意力机制被HMM状态取代，以获得持续时间和声学的完全概率联合模型。模型开发利用了基于HMM和seq2seq的TTS的设计原则。实验表明。该模型在1k次的模型更新训练后产生了可理解的语音，语音质量类似于Tacotron2,但是训练速度提高了15倍，与标准的Tacotron 2不同，它还允许控制语速。代码和样例语音参考：<https://shivammehta25.github.io/Neural-HMM/>
+
+
+#### 2.Background
+
+这项工作的起点是《Where do the improvements come from in sequence-tosequence neural TTS》，反应基于HMM的SPSS方法与Seq2Seq的Attention方法的四个关键点是：
+
+1. Neural vocoder with mel-spectrogram inputs
+2. Learned front-end (the encoder)
+3. Acoustic feedback (autroregression)
+4. Attention instead of HMM-based alignment
+
+其中，第1-3项提高了语音质量，而Attention有时会使输出明显变差。本文将1-3纳入TTS系统，该系统利用神经HMM，而不是关注seq2seq的建模。下文第2.1节描述了如何在先前工作的基础上将1-3添加到HMM中，并在第2.2节中讨论了注意事项（4）。
+
+##### 2.1 Adding neural TTS aspects to HMM-based TTS
+
+关于1，现在大多数的Vocoder依然采用频谱作为输入，因此本方法依然采用该技术；改进韵律的另一个因素是第2项
+前端（即编码器）。再说一遍，没有什么可以阻止的在利用HMM的系统中使用这一思想。基于HMM我们介绍的系统都使用与Tacotron2相同的编码器架构
+，没有添加额外的语言特征。对于3，在本文中，我们描述了HMM，它与Tacotron一样，使用由神经网络定义的更强的非线性AR模型。
+
+##### 2.2 Attention in TTS
+
+在一个典型的基于序列到序列的TTS系统中，Attention机制负责持续时间建模和学习
+在训练期间将输入符号与输出帧对齐。但是一些研究表明Attention机制在TTS中并不是均有效的。一些研究表明，好的注意力机制必须满足：local(output frame要对齐唯一的input symbol);monotonic; complete(not skip any speech sounds).大多数的基于神经网咯的TTS的Attention机制不满足这3点。
+
+#### 3.Method
+
+3.1节描述了如何将Tacotron2魔改为Neural HMM。 3.2节描述了Neural HMM TTS中的一些Trick。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/03/p1.png" /> 
+</div>
+
+##### 3.1 Replacing attention with neural HMMs
+
+Tactron2中的核心技术：location-sensitive attention，使用了之前生成的acoustic frames: $x_{1:t-1}$,用以选择出encoder output中的哪个$h_n$用来发送给decoder产生下一帧$x_t$. 注意力也有一种内部状态，以先前注意力权重$\alpha_{1:t-1,n}$的形式存在。 上图中(a)展示了Tacotron2如何生成第$t$帧：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/03/p2.png" width=40%/> 
+</div>
+
+这里的$a_{t-1}$表示第一个decoder LSTM层的hidden和cell state，OutputNet表示decoder的上半部分（包含了第二层LSTM),$\tau_t \in [0,1]$表示stop token.
+
+Neural HMM模型中，移除了上述公式（1）中的$g_{t-1}$,替换了attention,通过一个概率OutputNet使用$a_t$和HMM state $s_t \in \\{1,...N\\}$来估计第$t$帧$x_t$,输出HMM的输出分布$o(\theta)$的参数$\theta_t$。 stop token变成了转移概率$\tau_t \in [0,1]$对应$s_t,s_1=1$,上式中的（2）-（4）变为：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/03/p3.png" width=40%/> 
+</div>
+
+这里的$Bernoulli(p)$是取值为$\\{0,1\\}$的二项分布，其中取1的概率为$p$.Tacotron2中的attention state $\alpha_{t,n}$被替换为single, integer state variable $s_t$基于$\tau_t$随机演化得到。转移概率基于$s_t$状态的h-vector ($g_t$)和之前的帧$x_{1:t-1}$($a_t$),因此对于不同时刻$t$即使是相同的状态也是不一样的。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/03/model_video.gif" /> 
+</div>
+
+如上图所示最终neural HMM是一个left-right no-skip的AR-HMM模型。encoder将每一个input sequence变成一个独一无二的HMM,$h_n$表示状态，decoder输入$h_n$这个状态向量和AR input $x_{1:t-1}$产生输出分布$o(\theta_t)$和时间$t$下一个状态$n$的转移概率$\tau_t$。
+
+为了满足马尔可夫性，$(\theta_t,\tau_t)$只能依赖当前的状态$s_t$和过去的观测$x_{1:t-1}$,因此将tacotron2中的OutputNet中的LSTM结构替换为feedforward layer,这也大大降低了参数量。
+
+最后Tacotron2还设计了一个基于卷积的post-net用来增强频谱的生成，这类似于经典SPSS中的后滤波和全局方差补偿。Tacotron2损失函数最小化post-net前后的频谱的MSE。这种不可逆的post-net不适合我们这种基于对数似然的模型。对于这里post-net可以单独训练或使用一个可逆的方式实现。这一部分将作为我们未来探索的工作。
+
+##### 3.2 Practical considerations
+
++ Numerical stability: HMM中大量使用了“log-sun-exp trick”，但是会出现$ln0=-\infty$的情况，会导致在pytorch下计算梯度是NaN的情况。类似于经典的HMM方法，我们选择使用对角Gaussian 输出分布$o(\mu,\sigma)$作为输出分布。使用$softplus=log(1+exp^{x})$非线性方式拟合$\sigma$，具有非零最小值，此处为0.001，这在其他生成模型中是重要的。
+
++ Architecture enhancements: Tacotron 2可以使用软注意力来表示中间状态，因为$\alpha_{t;n}$值有许多自由度。取而代之的是，主要的基于HMM的合成器每个输入音素使用5个子状态，并以200帧/秒的速度运行。Tacotron 2以80帧/秒的速度运行，即40%的帧速率，因此我们每个音素使用2个状态来获得与这些HMM相同的时间分辨率。
+这是通过将解码器输出层的大小加倍并将其输出解释为每个音素的两个级联状态向量$h$来实现的。
+
+经典的基于HMM的TTS包括几个相邻帧之间的依赖关系模型，以促进时间上平滑的输出。尽管本文中的Tacotron2和神经HMM只将最新的帧$x_{t-1}$作为AR输入，但Eq.（1）意味着它们可以任意记忆很久以前的信息，这有利于对话语级韵律进行建模。我们还将$x_0$，即初始AR上下文（“go token”）视为可学习的参数。
+
++ Initialisation: HMM通常使用平启动进行初始化，其中所有状态都具有相同的统计数据。通过将解码器输出层中的所有权重归零，但将其他层初始化为normal，所有状态将具有相同的输出（零），但梯度不同且为非零，从而实现学习。选择最后一层偏置值,以便在训练开始时，每个z状态的的$\mu=0$和$\sigma=1$与我们归一化数据的全局统计数据相匹配。
+
++ Training: 神经HMM训练是新旧的混合：我们使用经典的（按比例）前向算法来计算精确的序列对数似然，但随后利用反向传播和自动微分来使用Adam进行优化。这些部分分别对应于（广义的）EM算法的E步骤和M步骤。训练期间的计算在状态上是平行的，但与Tacotron 2一样，由于时间的重复，在时间上是连续的。
+
+线性AR HMM的最大似然估计可能导致模型不稳定。非线性自回归神经TTS也存在类似的问题。Tacotron 2通过在pre-net中添加dropout来解决这个问题，我们在这里保留了这个解决方案。
+
++ Synthesis: 我们可以迭代使用第3.1节中的方程，并随机采样新的帧$x_t \sim o(\theta_t)$。然而，基于HMM的TTS通常受益于确定性地生成典型输出，而不是随机采样。对于声学模型，这是通过生成最可能的输出序列来实现的，该输出序列高斯分布的$o(\theta_t)$的均值$\mu_t$相同，迭代的取$x_t=\mu_t$(模型结构图中的红色箭头)。这与Tacotron 2的输出生成密切相关，因为它是使用MSE进行训练的，MSE通过平均$E[X_t]$最小化。
+
+SSNT-TTS发现，在合成时随机采样转变导致较差的暂停持续时间，并且经典的基于HMM的系统通常将每个状态中的时间基于该状态的平均持续时间。这个平均值很难用通过转移概率$\tau_t$隐式定义的持续时间分布来计算，如这里所示。相反，我们使用[24，32]中的简单算法来确定
+基于持续时间分位数的持续时间生成（例如，中位数而不是平均值）。分位数阈值控制说话速率，可以根据各状态进行调整。对于本文评估的模型，非正式听力表明声学和持续时间的确定性生成都导致了清晰质量改进,网页上提供了示例。
+
+
+#### 4.Expriments
+
+<div align=center>
+    <img src="zh-cn/img/ch3/03/p4.png" /> 
+</div>
+
+上图展示了Neural HMM的模型要比Tacotron2模型大小要小，这里的T2+P表示Tacotron2添加post-net,T2-P标表示Tacotron2不添加post-net,NH2表示Neural HMM每个音素有2个状态，NH1表示Neural HMM每个音素有1个状态。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/03/p5.png" /> 
+</div>
+
+训练过程中Tactron2要在14.5K步迭代后才能合成连贯的语音，而NH2仅需要1K步的更新训练就可以，上图展示了合成100个验证话语的谷歌ASR单词错误率（WER）在训练过程中的演变（包括对数据的一小部分（500个话语）进行训练的结果）。
+
+
+#### 5.Conclusion and Future Work
+
+我们描述了经典的和现代的TTS范式，可以将其组合得到完全 probabilistic, attention-free的seq2seq的基于neural HMM的TTS模型。
+我们的示例系统比Tacotron2更小，但达到了相当的自然度，更快地学会说话和对齐，需要更少的数据，而且不会胡言乱语。据我们所知这是第一个基于HMM的模型在语音质量上优于神经网络的TTS模型。神经HMM还允许容易地控制合成语音的说话速率。
+
+未来的工作包括更强的网络架构，例如，基于transformer和单独训练的post-net。将Neural HMM与强大的分布族结合比如normalising flows，或者替换Gaussion假设或者替换为一个类似于post-net的网络来拟合分布。这可以允许采样语音的自然度超过确定性输出生成的自然度。
+
+------
 
 <!-- #CNN -->
 
@@ -610,8 +733,6 @@ Tacotron2(
 
 
 <!-- #Transformer -->
-
-
 ### 6. TransformerTTS
 
 !> https://arxiv.org/abs/1809.08895
