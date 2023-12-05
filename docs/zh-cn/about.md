@@ -22,6 +22,7 @@
 |2023-11-30            |  Tacotron  |
 |2023-12-01            |  Tacotron v2  |
 |2023-12-04            |  Neural HMM TTS  |
+|2023-12-05            |  DeepVoice v1  |
 
 
 
