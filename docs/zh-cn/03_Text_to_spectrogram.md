@@ -966,13 +966,274 @@ preprint arXiv:1611.01576, 2016.）（ QRNN ）层对输入进行编码，然后
 
 <!-- https://blog.csdn.net/weixin_42721167/article/details/113681731 -->
 
+##### 摘要
 
+本文介绍了一种利用低维可训练说话人嵌入增强神经文本到语音的技术，以从单个模型产生不同的声音。
+
+作为起点，我们展示了针对单说话人神经 TTS 的两种最先进方法的改进： Deep Voice 1 和 Tacotron 。
+我们引入了 Deep Voice 2 ，它基于与 Deep Voice 1 类似的管道，但构建了更高的性能构建块，并表现出较 Deep Voice 1 更显著的音频质量改进。
+
+我们通过引入后处理神经声码器来改进 Tacotron ，并展示了显著的音频质量改进效果。然后，我们在两个多说话人 TTS 数据集上演示了用于 Deep Voice 2 和 Tacotron 的多说话人语音合成技术。
+
+##### 1.介绍
+
+人工语音合成，通常称为文本到语音( TTS )，在技术接口、可访问性、媒体和娱乐等方面有多种应用。
+大多数 TTS 系统都是用单个讲话者语音构建的，而通过拥有不同的语音数据库或模型参数来提供多个讲话者语音。
+因此，与只支持单一语音的系统相比，开发支持多个语音的 TTS 系统需要更多的数据和开发工作。
+
+在这项工作中，我们证明我们可以建立全神经的多说话人 TTS 系统，在不同的说话人之间共享绝大多数的参数。
+我们证明，一个单一的模型不仅可以从多个不同的声音产生语音，而且与训练单说话者系统相比，每个说话者所需要的数据也明显较少
+
+具体而言，我们的贡献如下:
+1. 我们提出了一种基于 Deep Voice 1 (《Deep voice: Real-time neural text-to-speech》)的改进架构： Deep Voice 2 ；
+2. 我们介绍了一种基于 WaveNet (《Wavenet: A generative model for raw audio》)的声谱图到音频神经声码器，并将其与 Tacotron (《Tacotron: Towards end-to-end speech synthesis.》) 一起使用，作为 Griffin-Lim 音频生成器的替代品；
+3. 以这两个单说话人模型为基线，我们通过在 Deep Voice 2 和 Tacotron 中引入可训练的说话人嵌入来演示多说话人神经语音合成。
+
+本文的其余部分组织如下：
+第二节讨论了相关的工作，以及使本文与之前工作做出不同贡献的原因；
+第三节介绍了 Deep Voice 2 ，并凸显了与 Deep Voice 1 的区别；
+第四节解释了神经 TTS 模型的说话人嵌入技术，并展示了 Deep Voice 2 和 Tacotron 架构的多说话人变体；
+第五节第一部分通过平均意见评分( MOS )评估量化了单说话人 TTS 的改进，第二部分通过 MOS 评估和多说话人鉴别器精度度量给出了 Deep Voice 2 和 Tacotron 的综合音频质量；
+第六节给出结论并对结果和未来工作进行讨论。
+
+##### 2.相关工作
+
+我们按顺序讨论我们在第一节提出的每个相关工作，从单说话人神经语音合成开始，然后转向多说话人语音合成和生成模型质量度量。
+       
+关于单说话人的语音合成，深度学习已被用于各种各样的子组件，包括持续时间预测(《Fast, compact, and high quality LSTM-RNN based statistical parametric speech synthesizers for mobile devices》)，基本频率预测(《Median-based generation of synthetic speech durations using a non-parametric approach》)，声学建模(《Unidirectional long short-term memory recurrent neural network with recurrent output layer for low-latency speech synthesis》)，以及自回归逐样本音频波形生成器(《SampleRNN: An unconditional end-to-end neural audio generation model》)
+
+我们的贡献建立在最近的完全神经 TTS 系统方面的工作基础上，包括 Deep Voice 1 (《Deep voice: Real-time neural text-to-speech》)、 Tacotron(《Tacotron: Towards end-to-end speech synthesis.》)和 Char2Wav(《Char2wav: End-to-end speech synthesis》) 。
+
+这些工作集中在构建单说话人 TTS 系统，而我们的论文则集中在扩展神经 TTS 系统，以在每个说话人的数据更少的情况下处理多个说话人。
+
+我们的工作并不是第一次尝试多说话人 TTS 系统。例如，在传统的基于 HMM 的 TTS 合成(《Robust speaker-adaptive hmm-based text-to-speech synthesis》)中，一个平均语音模型使用多个说话者数据进行训练，然后对其进行适配以适应不同的说话者。
+基于 DNN 的系统(《On the training of DNN-based average voice model for speech synthesis》)也被用于构建平均语音模型， i-vector 表示说话人作为每个目标说话人额外的输入层和单独的输出层。类似地，Fan等人(《Multi-speaker modeling and speaker adaptation for DNN-based TTS synthesis》)在不同说话人之间使用带有说话人相关的输出层预测声码器参数(如线谱对、非周期性参数等)的共享隐藏表达。为了进一步研究，Wu等人(《A study of speaker adaptation for DNN-based speech synthesis》)对基于 DNN 的多说话人建模进行了实证研究。最近，生成对抗网络( GANs )(《Voice conversion from unaligned corpora using variational autoencoding wasserstein generative adversarial networks》)解决了说话人适应问题。
+
+相反，我们使用可训练说话人嵌入多说话人 TTS 。该方法被研究在语音识别(《Fast speaker adaptation of hybrid NN/HMM model for speech recognition based on discriminative learning of speaker code》)，但也是语音合成的一种新技术。与之前依赖于固定嵌入(例如 i-vector )的工作不同，本工作中使用的说话人嵌入是与模型的其他部分一起从零开始训练的，因此可以直接学习与语音合成任务相关的特征。此外，这项工作不依赖于每个说话人的输出层或平均语音建模，那会导致更高质量的合成样本和更低的数据需求(因为每个说话人需要学习的唯一参数更少)。
+
+为了以一种自动的方式评估生成的声音的区别性，我们建议使用说话人鉴别器的分类精度。类似的指标，如初始分数，已被用于图像合成的 GANs 定量质量评估(《Improved techniques for training gans》)。说话人分类研究既有传统的基于高斯均值的方法(《* Speaker verification using adapted gaussian mixture models*》)，也有最近的深度学习方法(《Deep speaker: an end-to-end neural speaker embedding system》)。
+
+##### 3.单说话人 Deep Voice 2
+
+在本节中，我们介绍了 Deep Voice 2 ，一种基于 Deep Voice 1 (《Deep voice: Real-time neural text-to-speech》)的神经 TTS 系统。我们保留了 Deep Voice 1 (《Deep voice: Real-time neural text-to-speech》)的一般结构，如下图所示。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/04-1/p1.png" /> 
+</div>
+
+Deep Voice 2 和 Deep Voice 1 的一个主要区别是音素持续时间和频率模型的分离。Deep Voice 1 有一个单一的模型来联合预测音素持续时间和频率模型(浊音和随时间变化的基频，F0)。在 Deep Voice 2 中，首先预测音素持续时间，然后作为频率模型的输入。
+
+在随后的小节中，我们介绍了在 Deep Voice 2 中使用的模型。我们将在第五节第一部分对 Deep Voice 2 和 Deep Voice 1 进行定量比较。
+
+###### 3.1 分割模型
+
+与 Deep Voice 1 类似，在 Deep Voice 2 中，音素位置估计被视为一个无监督学习问题。分割模型是卷积—循环体系结构，带有连接主义时间分类( CTC )缺失(《Connectionist temporal classification: labelling unsegmented sequence data with recurrent neural networks》)，用于音素对分类，然后使用音素对提取它们之间的边界。
+
+Deep Voice 2 的主要架构变化是在卷积层中添加了批处理规范化和残差连接。其中， Deep Voice 1 的分割模型将每一层的输出计算为：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/04-1/p2.png" width=20%/> 
+</div>
+
+其中 $h^{(l)}$ 是第 $l$ 层的输出， $W^{(l)}$ 为卷积滤波器组， $b^{(l)}$ 是偏置向量，`*`是卷积算子。
+相反， Deep Voice 2 的分割模型层代替计算为：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/04-1/p3.png" width=20%/> 
+</div>
+
+式中BN为批归一化(《Batch normalization: Accelerating deep network training by reducing internal covariate shift》)。
+此外，我们发现该分割模型对沉默音素和其他音素之间的边界存在错误，这将显著降低在某些数据集上的分割精度。我们引入了一个小的后处理步骤来纠正这些错误:每当分割模型解码沉默边界时，我们调整边界的位置与沉默检测启发式。
+
+###### 3.2 持续时间模型
+
+在 Deep Voice 2 中，我们没有预测一个连续值的持续时间，而是将持续时间预测制定为一个序列标记问题。
+我们将音素持续时间离散化为对数尺度的桶，并将每个输入音素分配给与其持续时间对应的桶标签。
+我们通过在输出层具有成对电位的条件随机场( CRF )对序列进行建模(《Neural architectures for named entity recognition》)
+在推理过程中，我们使用维特比前向后算法从 CRF 中解码离散时间。
+我们发现量化持续时间预测和引入 CRF 隐含的两两依赖可以提高综合质量。
+
+###### 3.3 频率模型
+
+根据时长模型解码后，预测的音素时长将从每个音素输入特征中升级到频率模型的每个帧输入中。Deep Voice 2 频率模型由多个层次组成:首先，双向GRU层(《Learning phrase representations using rnn encoder-decoder for statistical machine translation》)通过输入特征生成隐藏状态。从这些隐藏的状态，仿射投影紧随一个 sigmoid 非线性产生每个帧被表达的概率。隐藏状态也被用来做两个单独的标准化 F0 预测。
+
+首先用单层双向 GRU 进行 $f_{GRU}$ 预测，然后再用仿射投影进行预测。第二种预测 $f_{conv}，是通过将不同卷积宽度的多个卷积和单个输出通道的贡献相加得出的。最后，将隐态与仿射投影和 sigmoid 非线性相结合来预测混合比率 $ω$ ，并将两者归一化后的频率预测合并为：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/04-1/p4.png" width=20%/> 
+</div>
+
+然后，将归一化预测 $f$ 转换为真实频率 F0 预测：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/04-1/p5.png" width=20%/> 
+</div>
+
+其中， `F0` 和 `σF0` 分别为训练模型的说话者 F0 的均值和标准差。我们发现，混合卷积和循环层来预测 F0 的效果比单独预测任一层的效果都好。我们将此归因于一种假设，即在有效处理整个上下文信息的同时，广泛的卷积减少了循环层在大量输入帧中维护状态的负担。
+
+###### 3.4 声码器
+
+Deep Voice 2 语音模型基于一个 WaveNet 架构(《Wavenet: A generative model for raw audio》)，带有一个双层双向 QRNN (《Quasi-recurrent neural networks》)调节网络，类似于 Deep Voice 1 。然而，我们去掉了门控 tanh 非线性和残差连接之间的 `1 × 1` 卷积。此外，我们对WaveNet的每一层都使用相同的调节器偏差，而不是像在 Deep Voice 1 中那样为每一层产生单独的偏差。
+
+##### 4.带有可训练说话人嵌入的多说话人模型
+
+为了从多个说话人合成语音，我们在我们的每个模型中增加了一个低维说话人，并为每个说话人嵌入向量。
+与以前的工作不同，我们的方法不依赖于每个说话人的权重矩阵或层。
+与说话人相关的参数存储在一个非常低维的向量中，因此在说话人之间有几乎完全的权重共享。
+我们使用说话人嵌入来产生递归神经网络( RNN )初始状态、非线性偏差和乘法门控因子，并在整个网络中使用。
+说话人嵌入随机初始化，均匀分布在`[ – 0.1, 0.1]`，并通过反向传播联合训练。每个模型都有自己的一套扬声器嵌入。
+
+为了鼓励每个说话人的独特声音特征影响模型，我们将说话人嵌入到模型的多个部分。
+根据经验，我们发现仅仅提供扬声器嵌入输入层不适用于任何模型，除了发音模型。这可能使由于高度的残余 WaveNet 连接存在，以及学习高品质说话人嵌入的难度导致。
+我们注意到有几种模式趋向于产生高性能：
++ 特定位置说话人嵌入：对于模型架构中的每个使用地点，通过仿射投影和非线性变换嵌入到适当的维度和形式的共享说话人。
++ 循环初始化：初始化循环层隐藏状态与特定位置的说话人嵌入。
++ 输入增加：连接一个特定位置的说话人嵌入到输入在每个时间步循环层。
++ 功能控制：多层激活，嵌入一个特定位置的说话人，以呈现可适应的信息流。
+
+接下来，我们将描述如何在每个体系结构中使用说话人嵌入。
+
+###### 4.1 多说话人 Deep Voice 2
+
+Deep Voice 2 的每个模型都有单独的扬声器嵌入。然而，它们可以被看作是一个更大的独立训练的说话人块嵌入。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/04-1/p6.png" /> 
+</div>
+
+**4.1.1 分割模型**
+
+在多说话人分割模型中，我们在卷积层的剩余连接中使用特征门控。我们将批归一化激活乘上一个特定位置的说话人嵌入：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/04-1/p7.png" width=30%/> 
+</div>
+
+$g_s$ 是一种特定位置的说话人嵌入。在所有卷积层中，相同的特定位置的嵌入是共享的。此外，我们初始化每个循环层与第二个特定位置嵌入。类似地，每一层共享相同的特定位置的嵌入，而不是每一层有一个单独的嵌入。
+
+**4.1.2 持续时间模型**
+
+多说话人持续时间模型使用与说话人相关的循环初始化和输入增强。一种特定于站点的嵌入用于初始化 RNN 隐藏状态，另一种特定位置的嵌入通过连接到特征向量作为第一 RNN 层的输入。
+
+**4.1.3 频率模型**
+
+多说话人频率模型使用循环初始化，它用一个特定位置的说话人嵌入来初始化循环层(循环输出层除外)。如 3.3 节所述，单说话人频率模型中的递归输出层和卷积输出层预测归一化频率，然后通过固定的线性变换将其转换为真 F0 。线性变换依赖于说话人 F0 的均值和标准偏差。
+这些值在不同的演讲者之间差别很大：例如，男性演讲者的 F0 均值往往要低得多。
+为了更好地适应这些变化，我们使平均值和标准偏差可训练的模型参数，并将它们乘以依赖于说话人嵌入的缩放项。具体而言，我们计算 F0 预测为:
+
+<div align=center>
+    <img src="zh-cn/img/ch3/04-1/p8.png" width=40%/> 
+</div>
+
+$g_f$ 是一种特定位置说话人嵌入， `F0` 和 `σF0` 是可训练的标量参数，初始化为数据集上 F0 的均值和标准偏差， $V_{\mu}$ 和 $V_{σ}$ 是可训练的参数向量。
+
+$$softsign=\frac{x}{1+|x|}$$
+
+**4.1.4 语音模型**
+       
+多说话人的语音模型只使用输入增强，特定位置的说话人嵌入连接到控制器的每个输入框上。
+这与Oord等人(《Wavenet: A generative model for raw audio》)提出的全局条件反射不同，并允许说话者嵌入影响局部条件反射网络。
+       
+在没有说话人嵌入的情况下，由于频率和持续时间模型提供了独特的特征，语音模型仍然能够产生听起来比较清晰的声音。
+然而，在语音模型中嵌入说话人可以提高音频质量。我们确实观察到嵌入收敛到一个有意义的潜在空间。
+
+###### 4.2 多说话人 Tacotron
+
+除了通过扬声器嵌入扩展 Deep Voice 2 ，我们还扩展了 Tacotron (《Tacotron: Towards end-to-end speech synthesis》)，一种序列到序列的字符到波形模型。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/04-1/p9.png" /> 
+</div>
+
+当训练多说话人的 Tacotron 变体时，我们发现模型的性能高度依赖于模型的超参数，并且一些模型常常不能学习一小部分说话人的注意机制。我们还发现，如果每个音频片段中的语音不在同一时间步长开始，模型就不太可能收敛到有意义的注意力曲线和可识别的语音。因此，我们在每个音频剪辑中削减了所有最初和最终的沉默。
+
+由于模型对超参数和数据预处理的敏感性，我们认为可能需要额外的调整来获得最大的质量。因此，我们的工作重点是证明 Tacotron ，就像 Deep Voice 2 一样，能够通过说话人嵌入来处理多个说话人，而不是比较两种架构的质量。
+
+**4.2.1 特征到谱图模型**
+
+Tacotron 字符—频谱图体系结构由一个 convolution-bank-highway-GRU ( CBHG )编码器、一个注意力解码器和 CBHG 后处理网络组成。由于体系结构的复杂性，我们省略了完整的描述，而将重点放在我们的修改上。
+       
+我们发现将说话人嵌入到 CBHG 后处理网络中会降低输出质量，而将说话人嵌入到字符编码器中则是必要的。
+如果没有与说话人相关的 CBHG 编码器，该模型就无法学习其注意机制，也无法产生有意义的输出。
+为了使说话人编码器适应，我们在每个时间步用一个特定位置的嵌入作为每个高通图层的额外输入，并用第二个特定位置的嵌入初始化 CBHG RNN 状态。
+       
+我们还发现，增加说话人嵌入解码器是有帮助的。
+我们使用一个特定位置嵌入解码器前置网络作为一个额外的输入，一个额外的特定位置嵌入作为初始上下文向量注意力 RNN 的关注，一个特定位置嵌入作为初始解码器格勒乌隐藏状态，和一个特定位置嵌入的偏倚 tanh 基于内容的注意机制。
+
+**4.2.2 频谱图到波形模型**
+
+在(《Tacotron: Towards end-to-end speech synthesis》)中的原始 Tacotron 实现使用 Griffin-Lim 算法通过迭代估计未知相位将谱图转换为时域音频波形。我们观察到，输入谱图中的小噪声会导致 Griffin-Lim 算法中明显的估计误差，产生的音频质量下降。
+       
+为了使用 Tacotron 而不是使用 Griffin-Lim 来产生更高质量的音频，我们训练了一个基于 WaveNet 的神经声码器，将线性声谱图转换为音频波形。
+所使用的模型相当于 Deep Voice 2 的发声模型，但采用线性比例的对数幅度谱图代替音素身份和 F0 作为输入。
+       
+合成的 Tacotron–WaveNet 模型如上图所示。正如我们将在第5.1节中展示的那样，基于 WaveNet 的神经声码器确实也显著改善了单说话人 Tacotron 加速器。
+
+##### 5.结果
+
+在本节中，我们将展示使用所述架构进行单说话人和多说话人语音合成的结果。
+
+###### 5.1 单说话人语音合成
+
+我们在一个包含大约20小时的单说话人数据的内部英语语音数据库上训练 Deep Voice 1 、 Deep Voice 2 和 Tacotron 。
+我们使用 crowdMOS 框架(《Crowdmos: An approach for crowdsourcing mean opinion score studies》)进行 MOS 评估，比较样本的质量，比较结果如下：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/04-1/p10.png" /> 
+</div>
+
+结果表明，在结构上的改进在 Deep Voice 2 产生了比 Deep Voice 1 显著的质量上的提高。使用 WaveNet 将 Tacotron 生成的声谱图转换为音频比使用迭代的 Griffin-Lim 算法更好。
+
+###### 5.2 多说话人语音合成
+
+我们在 VCTK 数据集上用 44 小时的语音训练所有上述模型，该数据集包含 108 个说话人，每个人大约有 400 个语音。
+我们还在 audibooks 的内部数据集上训练所有模型，该数据集包含 477 个扬声器，每个说话人有 30 分钟的音频(总计 238 小时)。
+从我们的模型中观察到的一致的样本质量表明，我们的架构可以很容易地学习数百种不同的声音，这些声音具有各种不同的口音和节奏。
+
+如下图所示，学习到的嵌入位于一个有意义的潜在空间中。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/04-1/p11.png" /> 
+</div>
+
+(a) 80 层语音模型和(b) VCTK 数据集的字符-声谱图模型的学习说话人嵌入的主成分
+
+为了评估合成音频的质量，我们使用 crowdMOS 框架进行 MOS 评估，结果显示在下表。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/04-1/p12.png" /> 
+</div>
+
+我们有意将真实情况的样本包含在被评估的集合中，因为数据集中的口音对于我们的北美众包评分者来说很可能是陌生的，因此会因为口音而不是模型质量而被评为低评级。
+通过包含真实情况样本，我们可以将模型的 MOS 值与真实情况 MOS 值进行比较，从而评估模型质量而不是数据质量。
+然而，由于与真实情况样本的隐式比较，得到的 MOS 值可能较低。
+总的来说，我们观察到，在考虑低采样率和扩展/扩展的情况下， Deep Voice 2 模型可以接近一个接近真实情况的 MOS 值。
+       
+高采样质量但无法区分声音的多说话人 TTS 系统会产生高 MOS 值，但不能满足准确再现输入声音的预期目标。
+为了证明我们的模型不仅能产生高质量的样本，还能产生可区分的声音，我们还在我们生成的样本上测量了说话人判别模型的分类精度。
+speaker discriminative 是一种卷积网络，训练它对说话人的话语进行分类，在与 TTS 系统本身相同的数据集上训练。
+如果声音无法区分(或者音频质量较低)，那么合成样本的分类精度将远远低于真实情况样本。
+根据上表分类精度可知，从我们的模型生成的样本与真实情况样本具有同样的可区分性。
+只有使用 WaveNet 的 Tacotron 的分类精度显著较低，而且我们怀疑 WaveNet 会加剧谱图中的生成误差，因为它是用真实情况谱图训练的。
+
+##### 6.结论
+
+在这项工作中，我们探索如何通过低维可训练的说话人嵌入，将完全神经化的语音合成管道扩展到多说话人的文本到语音。
+我们首先介绍一种改进的单扬声器模型— Deep Voice 2 。
+接下来，我们通过训练多说话人 Deep Voice 2 和多说话人 Tacotron 模型来演示我们技术的适用性，并通过 MOS 评估它们的质量。
+总之，我们使用说话人嵌入技术来创建高质量的文本–语音系统，并最终表明神经语音合成模型可以有效地从散布在数百个不同的说话人中的少量数据中学习。
+       
+本研究的结果为未来的研究提供了许多方向。
+未来工作可能测试这种技术的局限性和探讨这些模型可以概括，多少人多少数据确实是每个说话人需要高质量的合成、新的说话人是否可以添加到一个系统通过修正模型参数和单独培训新的说话人嵌入,以及说话者嵌入是否能像词嵌入一样，可以作为一个有意义的向量空间。
 
 ------
 
 #### 3.Deep Voice 3: Scaling Text-to-Speech with Convolutional Sqeuence Learning
 
 <!-- https://blog.csdn.net/qq_37175369/article/details/81476473?spm=1001.2101.3001.6650.8&utm_medium=distribute.pc_relevant.none-task-blog-2%7Edefault%7EBlogCommendFromBaidu%7ERate-8-81476473-blog-113062548.235%5Ev39%5Epc_relevant_3m_sort_dl_base4&depth_1-utm_source=distribute.pc_relevant.none-task-blog-2%7Edefault%7EBlogCommendFromBaidu%7ERate-8-81476473-blog-113062548.235%5Ev39%5Epc_relevant_3m_sort_dl_base4&utm_relevant_index=9 -->
+
+<!-- 
+https://blog.csdn.net/qq_37175369/article/details/81476473?spm=1001.2101.3001.6650.7&utm_medium=distribute.pc_relevant.none-task-blog-2%7Edefault%7ECTRLIST%7ERate-7-81476473-blog-113681731.235%5Ev39%5Epc_relevant_3m_sort_dl_base4&depth_1-utm_source=distribute.pc_relevant.none-task-blog-2%7Edefault%7ECTRLIST%7ERate-7-81476473-blog-113681731.235%5Ev39%5Epc_relevant_3m_sort_dl_base4&utm_relevant_index=8 -->
 
 
 
