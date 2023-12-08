@@ -1387,11 +1387,145 @@ $$h_{p} (i)= cos(w_{s}i/10000^{k/d})$$
 
 ------
 
-### 5. SpeedySpeech
+### 5. SpeedySpeech: Efficient Neural Speech Synthesis
 
 !> https://arxiv.org/abs/2008.03802
 
+#### Abstract
 
+最近Seq2Seq的模型在TTS合成的质量上有很大提升，但是不能同时满足训练快，推理快和高质量的音频合成。我们设计了一个student-teacher模型满足高质量的更快的实时的频谱合成，满足低计算资源占用和训练速度快的要求。我们发现self-attention层在合成高质量的音频的过程中不是必须的。我们使用简单的卷积块和残差连接在我们的student和teacher网络中并在teacher网络中使用单个Attention层。与MelGAN Vocodeer耦合，我们的模型的合成质量显著高于Tacotron2。我们的模型可以在单个GPU上进行高效的训练，可以在CPU上进行实时推断，我们提供了合成的样例和源码在GitHub:<https://github.com/janvainer/speedyspeech>
+
+#### 1.Introduction
+
+最近像Tactron2这样的Seq2Seq的TTS系统对语音合成的质量有显著提升，但是需要大量的训练数据和计算资源才可以完成训练。一些工作试图减少计算负担，但是依然是对训练时间，推断速度，合成质量上的tradeoff。
+
+这篇paper考虑高效的TTS系统的设计，在保证合成质量的前提下，提高推断速度和硬件要求。我们提供了一个全卷积的，non-sequential的语音合成系统包括一个teacher和student网络，和FastSpeech类似。teacher网络是一个自回归的卷积网络用来提取音素和语音帧的对齐，student网络是一个非自回归的全卷积网络，用来编码输入的音素，预测每个音素的duration(语音帧的帧数是需要的)，基于音素和duration解码出梅尔尺度的频谱图，student网络和与训练的声码器MelGAN得到高质量的音频波形预测。
+
+该方法在LJSpeech数据集上训练，40个小时的训练数据可以在单张8GB的显卡上进行训练。最终可以在GPU和CPU上实现高质量TTS推断。
+
+本paper的贡献如下：
+1. 我们简化了FastSpeech的teacher-student架构，提供了一个快速稳定的训练过程。我们使用一个简单且参数量更少的卷积teacher网络配合一个单层的attention layer代替了FastSpeech的Transformer结构。
+2. 我们发现self-attentin结构在student网络上对于提升语音合成质量是非必须的。
+3. 我们提供了一种简单的数据增强策略使得teacher网络的训练更快更稳健。
+4. 我们发现我们的模型在保持高效训练和推断的前提下合成质量明显优于基线模型。
+
+#### 2.Related Work
+
+像Deep Voice 3和DCTTS这样的TTS系统尝试使用卷积网络代替Tacotron2的encoder-decoder架构进行加速训练。这些模型训练速度快，但是推理依然是sequential的，要比卷积网络慢。WaveRNN通过硬件加速和剪枝的方式提高sequentail推断的速度，但是训练过程是sequential的，会很慢。为了避免使用sequential inference,FastSpeech使用了Transformer架构，可以并行的生成频谱图，但是需要训练大量的attetion layer，这会导致很难训练并且会花费大量的训练时间。一些方法比如Parallel WaveNet和ClariNet提供了一些提升推断速度的方法，但是需要花费大量的计算资源训练teacher模型。
+
+#### 3.Our Model
+
+我们的模型的输入是音素，输出是对数尺度的Mel频谱图，首先我们讨论teacher网络，用来对齐音素和频谱图的帧，student网络使用这个对齐作为额外的监督训练合成频谱图。
+
+##### 3.1 Teacher network – Duration extraction
+
+teacher网络提取音素的duration,基于Deep Voice 3和DCTTS。主要包含四个部分：音素encoder,频谱图encoder,attention和decoder如下图所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/05/p1.png" /> 
+</div>
+
+**训练该模型用来input音素和历史的帧预测下一个spectrogram帧**；生成过程通过attention跟踪音素。attention value用来对齐音素和spectrogram帧，提取出音素的durations。
+
+**Phoneme encoder:** 音素encoder开始于embedding和一个ReLU激活的全连接层。进而，一些gated residual block,使用了逐步的空洞非因果卷积，如下图所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/05/p2.png" /> 
+</div>
+
+block的skip connection 对所有的层的encoder的输出进行相加。替换了DCTTS中的highway block，我们使用简单的convolutional residual block 基于WaveNet，其性能没有显著的下降。
+
+**Spectrogram encoder:** 频谱图编码器提供了对上下文频谱帧进行编码，将过去的频谱帧考虑进去。首先，每个input的频谱经过有个包含ReLU激活的全连接层。接着，拼接了一些gated residual blocks使用了逐步的空洞门控因果卷积，skip connection累加最终的output。
+
+**Attention:** 我们使用；额dot-product attention。音素encoder的输出是key,音素encoder的输出加上音素的embedding作为value(与Deep Voice 3相似)，频谱的encoder输出作为query。key和query通过位置编码和相同的线性层进行处理，以使注意力偏向单调性。attention score根据value与query的匹配程度是value向量的加权平均。这种方式，模型学习选择和下一个频谱帧相关的音素。
+
+**Decoder:** decoder将encoder与attention score进行加和作为input,接着进入入关个gated residual blocks使用了逐步的空洞因果卷积和一些卷基层使用了ReLU激活用来调整channel数，最后经过sigmoid预测层。
+
+**Training:** 目标spectrograms 左移一个位置作为输入，模型强制预测下一个spectrogram帧基于input的音素和之前的帧。和Tactron2不同，模型是并行运算的。最后一层使用sigmoid激活，我们将对数尺度的梅尔频谱缩放到[0,1]。损失函数最小化目标和预测的频谱的MAE和guided attention loss用以帮助单调对齐。guided attention loss对于attention matrix：$A\in R^{N \times T}$
+$$GuideAtt(A)=\frac{1}{NT}\sum^{N}_ {n=1}\sum^{T}_ {t=1}A_{n,t}W_{n,t}$$
+这里的$W_{n,t}=1-exp(-\frac{(n/N-t/T)^2}{2g^2})$是惩罚矩阵，$N$是音素的个数，$T$是频谱的帧数。参数$g$控制了$A_{n,t}$对损失的贡献。
+
+**Data augmentation:** 我们提供了3个数据增强办法增加训练的稳健性。（1） 我们在每个频谱图的像素上增加了Gaussian噪声。（2）We simulate the model outputs by
+feeding the input spectrogram through the network without gradient
+update in parallel mode (not sequentially). The resulting
+spectrogram is slightly degraded compared to the ground-truth
+spectrogram. We repeat this process multiple times to get an
+approximation of a sequentially generated spectrogram. We
+could simply generate the degraded spectrogram sequentially,
+but using the parallel mode several times is still faster than sequential
+generation. Moreover, in early stages of training, the
+model is virtually unable to sequentially generate more than just
+a few frames correctly. We observe that this method improves
+the robustness of sequential generation drastically and the model
+is able to generate long sentences well with just minor mistakes.（3）我们经input的频谱图选取随机帧进行随机值替换，这样做是为了鼓励模型在时间上使用更远的帧。否则，模型往往会过拟合到输入上的最新帧，并忽略较旧的信息，这使其不太稳定。
+
+**Inference/duration extraction:** 和Deep Voice 3类似我们使用局部掩码attention的位置来避免音素跳跃增强单调对齐，然而我们通过teacher-forceing的方式运行推断，我们input真实的帧来避免误差累积提取更可靠的对齐。attention matrix被用来提取每个音素的duration，通过在每个时间步长计算最有可能的音素的索引并对每个索引在时间上的出现次数进行计数。
+
+##### 3.2 Student network – Spectrogram synthesis
+
+student网络使用teacher网络对齐预测的频谱图。提供input的音素，基于duration和全部的梅尔频谱预测每个音素的durations,如下图所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/05/p3.png" /> 
+</div>
+
+student网路由音素encoder,duration predictor和decoder组成。三个模块由逐步的空洞残差卷积块构成，每一个bloack由1D卷积，ReLU激活和基于时间的batch normalization构成。由音素encoder生成的音素编码被馈送到duration predictor。duration predictor最终通过一个卷积和线性层 预测每个音素的duration。
+
+音素的编码向量会基于预测的每个音素的duration进行扩展，从而使得decoder的input的大小和output的大小是一致的。类似于FastSpeech
+，我们为音素编码向量添加了位置编码。我们假设网络在单个音素的上下文中而不是整个句子的上下文中区分帧位置更有益。decoder将扩展的音素编码与位置嵌入到Mel谱图的各个帧中。
+
+student网络灵感来源于FastSpeech,但是我们将attention替换为了残差卷积块，使用了基于时间的batch normalization代替layer normalization。
+
+**Training:** 对数尺度的Mel频谱使用MAE和structural similarity index (SSIM) losses，duration的预测使用Huber loss。我们使用从teacher网络提取得到的真实的duration训练student网络音素编码扩展。我们发现对对数尺度的Mel频谱的归一化是有必要的。不同于FastSpeech,我们detach了duration predictor和音素encoder之间得梯度流。
+
+#### 4.Experimental Setup
+
+这一部分介绍训练数据和训练过程的一些参数。
+
+##### 4.1 Dataset
+
+训练数据是LJ Speech。音素的转化使用了g2p python package:<https://github.com/Kyubyong/g2p>, We transform linear spectrograms to mel
+scale and a log transformation is applied on the amplitudes(振幅）。
+
+##### 4.2 Teacher network parameters
+
+encoder:包含10个residual block,decoder包含14个residual block,kernel size是3，空洞卷积的dilation rate是1,3,9,27,1,3,9,27对于前8个block,dilation rate是1对于剩下的block。40个channel用于skip connection,80个channel用于gate。优化器使用的是Adam。guided attention loss和增加了位置编码加快了attention的学习，这两项措施都是针对近乎单调的注意力。
+
+##### 4.3 Student network parameters
+
+student网络的生成能力受teacher网络duration提取精度的影响很大。如果没有精确的音素duration,模型会不收敛。我们观察到网络深度和dilation factor必须足够高，以跨越多个单个音素。我们使用了26个encoder block,dilation 重复如下pattern:1,1,2,2,4,4; 3个duration predictor block，dilation rate为4,3,1; 34个decoder block,dilation rate 重复如下pattern:1,1,2,2,4,4,8,8；所有卷积层有128个channel。
+
+使用了batch normalization，过程中尝试了layer normalization,channel normalization;尝试消融实验去掉SSIM loss; 对比了local position encoding,global postion encoding 和no position encoding,最终选择local position encoding。
+
+#### 5.Evaluation
+
+本节在合成质量，推断速度，训练速度上进行了评估。
+
+合成质量上，指标MUSHRA，人工打分，满分100分，视觉上分为5类：“优秀”，“一般”、“好”、“差”和“坏”，我们采用的指标和MUSHRA不同，we did not use anchor recordings. We discarded any participants
+who rated the reference under 90 in 8 or more cases out of 10.其评测结果如下表所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/05/p4.png" /> 
+</div>
+
+推断速度,如下表所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/05/p5.png" /> 
+</div>
+
+训练速度，如下表所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/05/p6.png" /> 
+</div>
+
+
+#### 6.Conclusion
+
+我们设计了一个基于卷积的TTS模型，input是音素，output是频谱图，综合考虑了训练和推断的速度以及合成语音的质量。我们的源码和合成样例可以在<https://github.com/janvainer/speedyspeech>获取。未来我们计划将我们的模型扩展到多说话人的训练数据的支持上。
+
+------
 <!-- #Transformer -->
 ### 6. TransformerTTS
 

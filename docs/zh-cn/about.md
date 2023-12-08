@@ -25,6 +25,8 @@
 |2023-12-05            |  DeepVoice v1  |
 |2023-12-06            |  DeepVoice v2  |
 |2023-12-07            |  DeepVoice v3  |
+|2023-12-08            |  Speedyspeech  |
+
 
 
 
