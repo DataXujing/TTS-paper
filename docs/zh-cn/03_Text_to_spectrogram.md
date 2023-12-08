@@ -1531,6 +1531,96 @@ who rated the reference under 90 in 8 or more cases out of 10.其评测结果如
 
 !> https://arxiv.org/abs/1809.08895
 
+!> https://neuraltts.github.io/transformertts/
+
+<!-- https://zhuanlan.zhihu.com/p/512240545 -->
+
+
+#### 1.先来回顾一下Tactron 2
+
+Tactron 1存在如下问题：
+
++ CBHG模块的去与留？：虽然在实验中发现该模块可以一定程度上减轻过拟合问题，和减少合成语音中的发音错误，但是该模块本身比较复杂，能否用其余更简单的模块替换该模块？
++ Attention出现错误对齐的现象：Tacotron中使用的Attention机制能够隐式的进行语音声学参数序列与文本语言特征序列的隐式对齐，但是由于Tacotron中使用的Attention机制没有添加任何的约束，导致模型在训练的时候可能会出现错误对齐的现象，使得合成出的语音出现部分发音段发音不清晰、漏读、重复、无法结束还有误读等问题。
++ r值如何设定？：Tacotron中一次可生成r帧梅尔谱，r可以看成一个超参数，r可以设置的大一点，这样可以加快训练速度和合成语音的速度，但是r值如果设置的过大会破坏Attention RNN隐状态的连续性，也会导致错误对齐的现象。
++ 声码器的选择：Tacotron使用Griffin-Lim作为vocoder来生成语音波形，这一过程会存在一定的信息丢失，导致合成出的语音音质有所下降（不够自然）。
+
+因此设计了Tactron 2,结构如下图所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/06/p1.png" /> 
+</div>
+
++ CBHG模块的去与留？：在Tacotron2中，对于编码器部分的CBHG模块，作者采用了一个`3*Conv1D+BiLSTM`模块进行替代；对于解码器部分的CBHG模块，作者使用了Post-Net（`5*Conv1D`）和残差连接进行替代。
++ Attention出现错误对齐的现象:在Tacotron2中，作者使用了Location-sensitive Attention代替了原有的基于内容的注意力机制，前者在考虑内容信息的同时，也考虑了位置信息，这样就使得训练模型对齐的过程更加的容易。一定程度上缓解了部分合成的语音发音不清晰、漏读、重复等问题。对于Tacotron中无法在适当的时间结束而导致合成的语音末尾有静音段的问题，作者在Tacotron2中设计了一个stop token进行预测模型应该在什么时候进行停止解码操作。
++ r值如何设定？:在Tacotron2中，r值被设定为1，发现模型在一定时间内也是可以被有效训练的。猜测这归功于模型整体的复杂度下降，使得训练变得相对容易。
++ 声码器的选择:在Tacotron2中，作者选择了wavenet作为声码器替换了原先的Griffin-Lim，进一步加快了模型训练和推理的速度，因为wavenet可以直接将梅尔谱转换成原始的语音波形。（Tacotron2合成语音音质的提升貌似主要归功于Wavenet替换了原有的Griffin-Lim）。
+
+
+#### 2.再看Transformer结构
+
+<div align=center>
+    <img src="zh-cn/img/ch3/06/p2.png" /> 
+</div>
+
++ Encoder: N blocks
++ Decoder: N blocks
++ Positional embedding: input embedding + positional embedding(PE)
+
+<div align=center>
+    <img src="zh-cn/img/ch3/06/p3.png" /> 
+</div>
+
++ (Masked) Multi-head attention: 
+    - Splits each Q, K and V into 8 heads
+    - Calculates attention contexts respectively
+    - Concatenates 8 context vectors
++ FFN: feed forward network, 2 fully connected layers.
++ Add & Norm: residual connection and layer normalization.
+
+#### 3.TransformerTTS
+
+Tacotron2仍然存在的问题:
+
+虽然Tacotron2解决了一些在Tacotron中存在的问题，但是Tacotron2和Tacotron整体结构依然一样，二者都是一个自回归模型，也就是每一次的解码操作都需要先前的解码信息，导致模型难以进行并行计算。其次，二者在编码上下文信息的时候，都使用了LSTM进行建模。理论上，LSTM可以建模长距离的上下文信息，但是实际应用上，LSTM对于建模较长距离的上下文信息能力并不强。
+
+针对以上问题，研究人员陆续提出了相应的解决方案。基于Tacotron2模型：
+
++ 训练和推理过程中的效率低下；
++ 使用循环神经网络（RNN）难以建立长依赖性模型。
+
+最终设计了TransformerTTS,如下图所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/06/p4.png" /> 
+</div>
+
+如果对Tacotron2和Transformer比较熟悉的话，可以从上图中看出，其实Transformer TTS就是Tacotron2和Transformer的结合体。其中，一方面，Transformer TTS继承了Transformer Encoder，MHAttention，Decoder的整体架构；另一方面，Transformer TTS的Encoder Pre-net、Decoder Pre-net、Post-net、stop Linear皆来自于Tacotron2，所起的作用也都一致。换句话说，
++ 将Tacotron2: `Encoder BiLSTM ——>Transformer: Multi-head Attention（+positional encoding）`;
++ Tacotron2: `Decoder Location-sensitive Attention + LSTM ——>Transformer: Mask Multi-head Attention （+positional encoding）`;
++ 其余保持不变，就变成了Transformer TTS。
+
+也正是Transformer相对于LSTM的优势，使得Transformer TTS解决了Tacotron2中存在的训练速度低下和难以建立长依赖性模型的问题。
+
+其中值得一提的是，Transformer TTS保留了原始Transformer中的scaled positional encoding信息。为什么非得保留这个呢？原因就是Multi-head Attention无法对序列的时序信息进行建模。可以用下列公式表示：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/06/p5.png" width=30%/> 
+</div>
+
+其中，$\alpha$是可训练的权重，使得编码器和解码器预处理网络可以学习到输入音素级别对梅尔谱帧级别的尺度适应关系。
+
+结合Tacotron2和Transformer提出了Transformer TTS，在一定程度上解决了Tacotron2中存在的一些问题。但仍然存在一些问题：如1）在训练的时候可以并行计算，但是在推理的时候，模型依旧是自回归结构，运算无法并行化处理；2）相比于Tacotron2，位置编码导致模型无法合成任意长度的语音；3）Attention encoder-decoder依旧存在错误对齐的现象。
+
+#### 4.TransformerTTS slide
+
+<object data="zh-cn/img/ch3/06/(AAAI19-3124)Neural Speech Synthesis with Transformer Network.pdf" type="application/pdf" width=100% height="530px">
+    <embed src="http://www.africau.edu/images/default/sample.pdf">
+        <p>This browser does not support PDFs. Please download the PDF to view it: <a href="zh-cn/img/ch3/06/(AAAI19-3124)Neural Speech Synthesis with Transformer Network.pdf">Download PDF</a>.</p>
+    </embed>
+</object>
+
+------
 
 ### 7. Glow-TTS
 

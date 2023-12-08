@@ -26,7 +26,7 @@
 |2023-12-06            |  DeepVoice v2  |
 |2023-12-07            |  DeepVoice v3  |
 |2023-12-08            |  Speedyspeech  |
-
+|2023-12-08            |  TransformerTTS  |
 
 
 
