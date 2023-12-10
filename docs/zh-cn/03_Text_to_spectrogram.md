@@ -2231,11 +2231,143 @@ FastSpeech 2/2s引入了一些方差信息来缓解TTS中的一对多映射问�
 
 !> https://arxiv.org/pdf/2006.06873.pdf
 
+!> https://github.com/NVIDIA/DeepLearningExamples/tree/master/PyTorch/SpeechSynthesis/FastPitch
+
+!> https://fastpitch.github.io/
+
 <!-- https://blog.csdn.net/weixin_42721167/article/details/119783774 -->
 <!-- https://zhuanlan.zhihu.com/p/420863679 -->
 
+#### 摘要
 
+我们提出了 FastPitch，一个基于 FastSpeech 的完全并行的文本到语音模型，以基频轮廓（fundamental frequency contours）为（输出）条件。 该模型在推理过程中预测**音高轮廓（pitch contours）**。通过改变这些(对pitch的)预测，生成的语音可以更具表现力，更好地匹配话语的语义，最终更能吸引听众。使用 FastPitch 均匀地增加或降低音高，从而可以产生类似于语音的随意调制（voluntary modulation）的语音。 对频率轮廓的调节(frequency contours)提高了合成语音的整体质量，使其与最先进的技术相媲美。它不会引入额外的开销，FastPitch 保留了有利的、完全并行的 Transformer 架构，具有超过 900倍 的实时因子用于典型语音的 mel-spectrogram（梅尔谱的） 合成。
 
+#### 1.模型描述
+
+##### 1.1 模型架构解析
+
+<div align=center>
+    <img src="zh-cn/img/ch3/10/p1.png" /> 
+    <p>FastPitch的架构图</p>
+</div>
+
+通过上图，详细展开一下FastPitch的细节。参照FastSpeech，FastPitch里面主要也是两个feed-forward transformer（FFTr）模块：
+
++ 第一个是负责输入文本tokens的”编码“；
++ 第二个是负责输出frames。
+
+如上图所示：$x=(x_1, x_2, ..., x_n)$是$n$个（注意，$n$，这是输入的序列的长度！）输入词汇单元（lexical units）的序列；
+$y=(y_1, y_2, ..., y_t)$是目标梅尔刻度谱（梅尔谱？mel-scale spectrogram）frames。那么，第一个FFTr模块是产出$x$的隐变量表示：
+$$h=FFTr(x)$$
+
+然后，这个隐变量表示（张量）$h$，被用来预测每个character（嗯？怎么不是lexical units了？）的时长（duration；上图中部右边的紫色的部分）和平均音高（average pitch；上图中左部的绿色部分）。两个预测，都是用了1D 卷积网络。也就是说：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/10/p2.png" width=40% /> 
+</div>
+
+这里的$d$的取值都是一个个的正整数（自然数）组成的n维向量（相当于说，一个lexical unit，对应一个正整数，标识的就是这个”词“的发音时长），$p$的取值是实数组成的$n$维向量（相当于说，一个lexical unit，对应一个实数，标识的是这个”词“的音高pitch）：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/10/p3.png" width=15% /> 
+</div>
+
+然后，音高$\hat{p}$
+ 就被一个神秘的神经网络处理一下，从而从$n$维度，升格为$n\times d$维度，并被加到$h$（ $h\in R^{n\times d}$
+ ）上去！（对应了左边的那个圆圈加号），即这里：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/10/p4.png" /> 
+    <p>FastPitch中的，音高预测和时长预测，特别地，pitch被加到h上去了！</p>
+</div>
+
+我们用$g$来表示pitch和隐变量表示$h$相加之后的结果。这个$g$会被离散地上采样，并传递给第二个FFTr模块，从而产生输出的梅尔谱序列。用公式表示就是：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/10/p5.png" width=40%/> 
+    <p>pitch参与第二个feed-forward transformer的关于梅尔谱序列生成的计算</p>
+</div>
+
+上面的$d_1, d_2, ..., d_n$其实是每个lexical unit对应的（正整数）的时长。【注意】不要把这个关于时长的$d_i$和$h$的shape里面的$(n,d)$的$d$（隐状态向量表示的维度）给混淆了。
+
+在训练的时候，我们当然需要ground truth的（每个character的或者每个lexical unit的）音高$p$和时长$d$。然后，在部署了训练好的模型之后的，解码推理阶段（inference的时候），使用的是上面的两个预测模型预测出来的音高 $\hat{p}$
+ 和时长 $\hat{d}$。
+
+故此，需要注意上图的figure 1里面，有三个关于mse loss的红色的框，我们把这三个loss合并起来就得到了整个模型的损失函数的表示：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/10/p6.png" width=35%/> 
+    <p>损失函数，mse，来自三个部分</p>
+</div>
+
+##### 1.2 输入字符的时长
+
+由于本文主要是针对英语的tts，所以输入字符（symbols，最好是lexical units或者characters）的发音时长是通过一个Tacotron2模型来估计出来的。设Tacotron2的最终的注意力矩阵表示为：$A\in R^{n\times t}$,【注意】$n$表示的是输入的text序列中的基本symbol的个数；$t$表示的是输出的梅尔谱的frame的个数！那么，第$i$个输入的symbol的时长$d_i$就是:
+
+<div align=center>
+    <img src="zh-cn/img/ch3/10/p7.png" width=20%/> 
+</div>
+
+这里的$r$表示$A$的行的索引（symbol的），$c$表示$A$的列的索引（梅尔谱frame的）。感觉原文中的“=”应该被替换为“==”,即，只有两者相等的时候，有取值为1，否则为0。这样相加之后，才有意义。进一步，上面的$i$是对输入字符的索引。
+
+因为Tacotron2只有一个注意力矩阵，所以我们没有必要像multi-head transformer那样，需要在各个head之间平衡一下取注意力矩阵。即，Tacotron2的更简单。需要注意的是，如下面的图+Table 1所展示的那样，FastPitch对于（字符symbol和梅尔谱frame之间的）“对齐”的质量具有一定的“钝感”（鲁棒性）。即，即使对齐有一定的浮动，但是最终的FastPitch的质量没有显著被影响到。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/10/p8.png" /> 
+    <p>FastPitch对“对齐质量”具有一定的鲁棒性</p>
+</div>
+
+##### 1.3 输入字符的音高
+
+ground truth的音高的获取方法，是使用：acoustic periodicity detection using the accurate autocorrelation method。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/10/p9.png" width=50%/> 
+    <p>https://link.zhihu.com/?target=https%3A//www.fon.hum.uva.nl/paul/papers/Proceedings_1993.pdf</p>
+</div>
+
+该算法找到归一化自相关函数（normalized autocorrelation function）的最大值数组，它们成为候选频率(candidate frequencies)。
+使用维特比算法(viterbi)计算通过候选数组的最低成本路径（lowest-cost path）。 该路径使候选频率之间的转换最小化。 我们设置窗口大小以匹配训练梅尔谱图的分辨率，为每一帧获得一个 F0 值。
+
+使用提取的持续时间 $d$ （时长）对每个输入符号的F0 值进行平均（如下图所示）。 计算中不包括清音值（unvoiced values）。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/10/p10.png" width=70%/> 
+    <p>估计基频的值，“in being comparatively”，蓝色表示估计值，绿色表示他们的均值。</p>
+</div>
+
+对于训练，这些值被标准化为 0 的平均值和 1 的标准差。如果没有特定符号的浊音 F0 估计，则其音高被设置为 0。我们没有看到对数域中的 F0 建模有任何改进.
+
+此外，我们尝试平均每个符号的三个音高值，以期捕获每个符号的开始、中间和结束音高。 然而，该模型被判定为劣质的。
+
+#### 2.实验
+
+主要结果：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/10/p11.png" /> 
+    <p>MOS上FastPitch和Tacotron2差不多，为啥不和FastSpeech比呢</p>
+</div>
+
+有点遗憾的是，既然FastPitch是继承自FastSpeech一脉，那其实最好是和Fastspeech1/2对比。精度差不多。就是速度特别快了。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/10/p12.png" /> 
+    <p>多speaker的MOS对比略微强过nvidia的Flowtron</p>
+</div>
+
+看下速度吧：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/10/p13.png" /> 
+    <p>需要增加和FastSpeech1/2的速度对比,只和Tacotron2对比有点耍流氓了</p>
+</div>
+
+#### 3.结论
+
+我们提出了FastPitch，一个基于FastSpeech的并行文本到语音模型，能够快速合成高保真的梅尔尺度谱图，并且对韵律有高度的控制。该模型演示了韵律信息的条件作用如何在前馈模型中显著提高合成语音的收敛性和质量，使其独立输出的语音更连贯，并导致最先进的结果。我们的音高调节方法比文献中已知的许多方法更简单。它没有引入开销，并为交互式调整韵律的实际应用程序打开了可能性，因为该模型速度快、表达能力强，并具有多说话人场景的潜力。
+
+------
 <!-- # Flow -->
 
 ### 11. OverFlow
