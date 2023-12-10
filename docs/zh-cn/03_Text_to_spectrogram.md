@@ -1864,16 +1864,224 @@ Figure3 b显示了与(Battenberg等，2019)类似的结果。Tacotron 2的CER在
 
 ------
 
-### 8. FastSpeech
+### 8. FastSpeech: Fast, Robust and Controllable Text to Speech
 
 !> https://arxiv.org/abs/1905.09263
 
+!> https://speechresearch.github.io/fastspeech/
+
 <!-- https://blog.csdn.net/weixin_42721167/article/details/118226439 -->
 
+#### 摘要
 
+基于神经网络的端到端文本到语音( TTS )显著提高了合成语音的质量。
+主要的方法(例如 Tacotron 2 )通常首先从文本生成梅尔谱图，然后使用声码器(如 WaveNet )从梅尔谱图合成语音。
+与传统的连接和统计参数方法相比，基于神经网络的端到端模型推理速度慢，合成的语音通常缺乏鲁棒性(如一些词被跳过或重复)和可控性(语音速度或韵律控制)。
+在本研究中，我们提出了一种基于 Transformer 的前馈网络，用于并行生成 TTS 梅尔谱图。
+具体来说，我们从基于编码器-解码器的教师模型中提取注意对齐用于音素持续时间预测，该模型由长度调节器用于扩展源音素序列，以匹配目标梅尔谱图序列的长度，用于并行梅尔谱图生成。
+在 LJSpeech 数据集上的实验表明，我们的并行模型在语音质量方面与自回归模型一致，几乎消除了在特别困难的情况下跳过词和重复的问题，并且可以平滑地调整语音速度。
+最重要的是，与自回归 Transformer TTS 相比，我们的模型使梅尔谱图生成速度加快了 270 倍，端到端语音合成速度加快了 38 倍。因此，我们称我们的模型为 FastSpeech 。
 
+#### 1.介绍
 
-### 9. FastSpeech v2
+近年来，由于深度学习的发展，文本到语音( Text to speech, TTS )引起了人们的广泛关注。
+基于深度神经网络的系统越来越受 TTS 的欢迎，如 Tacotron (《Tacotron: Towards end-to-end speech synthesis》)， Tacotron 2 (《Natural tts synthesis by conditioning wavenet on mel spectrogram predictions》)， Deep Voice 3 (《Deep voice 3: 2000-speaker neural text-to-speech》)，以及完整的端到端 ClariNet (《Clarinet: Parallel wave generation in end-to-end text-to-speech》)。
+这些模型通常首先从文本输入中自回归生成梅尔频谱图，然后使用 Griffin-Lim (《Signal estimation from modified short-time fourier transform》)、 WaveNet (《Wavenet: A generative model for raw audio》)、 Parallel WaveNet (《Parallel wavenet: Fast high-fidelity speech synthesis》)或 WaveGlow (《Waveglow: A flow-based generative network for speech synthesis》)等声码器从梅尔频谱图合成语音。
+ 基于神经网络的 TTS 方法在语音质量方面优于传统的连接和统计参数方法(《Unit selection in a concatenative speech synthesis system using a large speech database》，《Merlin: An open source neural network speech synthesis system》)。
+
+在现有的基于神经网络的 TTS 系统中，梅尔谱图的生成是自回归的。由于梅尔谱图的长序列和自回归特性，这些系统面临着几个挑战：
++ **生成梅尔谱图的推理速度慢**：虽然基于 CNN 和 Transformer 的 TTS (《Close to human quality tts with transformer》，《Deep voice 3: 2000-speaker neural text-to-speech》)可以加快训练基于 RNN 的模型(《Natural tts synthesis by conditioning wavenet on mel spectrogram predictions》)，所有模型生成的梅尔谱图都是在之前生成的梅尔谱图的基础上生成的，并且由于梅尔谱图序列通常为数百或数千个，因此推理速度较慢。
++ **合成语音通常不具有鲁棒性**：在自回归生成过程中，由于错误的传播(《Scheduled sampling for sequence prediction with recurrent neural networks》)和文本与语音之间错误的注意对齐，生成的梅尔谱图往往存在跳词和重复(《Deep voice 3: 2000-speaker neural text-to-speech》)的问题。
++ **合成语音缺乏可控性**：以前的自回归模型自动生成一个接一个的梅尔谱图，而没有明确地利用文本和语音之间的对齐。因此，在自回归生成中，通常很难直接控制语音的速度和韵律。
+
+考虑到文本和语音之间的单调对齐，为了加快梅尔谱图的生成，我们提出了一种新的模型 FastSpeech ，该模型以文本(音素)序列作为输入，非自回归地生成梅尔谱图。
+它采用了基于 Transformer (《Attention is all you need》)中自注意的前馈网络和一维卷积(《Convolutional sequence to sequence learning》，《Fftnet: A real-time speakerdependent neural vocoder》，《Deep voice 3: 2000-speaker neural text-to-speech》)。由于梅尔谱图序列比对应的音素序列长很多，为了解决两个序列长度不匹配的问题， FastSpeech 采用了一个长度调节器，根据音素持续时间(即每个音素对应的梅尔频谱图的数目)来匹配梅尔声谱图序列的长度。该调节器建立在音素持续时间预测器上，该预测器预测每个音素的持续时间。
+
+我们所提出的 FastSpeech 可以解决以下三个问题：
+1. 通过并行生成梅尔谱图， FastSpeech 极大加快了合成过程。
+2. 音素持续时间预测器保证了音素及其梅尔频谱图之间的硬对齐，这与自回归模型中的软对齐和自动注意对齐有很大不同。因此， FastSpeech 避免了错误传播和错误注意对齐的问题，从而减少了跳词和重复的比例。
+3. 长度调节器可以通过延长或缩短音素持续时间来轻松调节语速，以确定生成的梅尔频谱图的长度，也可以通过在相邻音素之间添加停顿来控制部分韵律。
+       
+我们在 LJSpeech 数据集上进行实验来测试 FastSpeech 。结果表明，在语音质量方面， FastSpeech 几乎与自回归 Transformer 模型一致。与自回归 Transformer TTS 模型相比， FastSpeech 在梅尔谱图生成上提高了 270 倍的速度，在最终语音合成上提高了 38 倍的速度，几乎消除了单词跳过和重复的问题，并且可以平滑地调整语音速度。
+
+#### 2.背景
+
+在本节中，我们简要概述了这项工作的背景，包括文本到语音，序列到序列学习，和非自回归序列生成。
+
+**文本到语音**: 
+TTS (《Deep voice: Real-time neural text-to-speech》，《Clarinet: Parallel wave generation in end-to-end text-to-speech》，《Almost unsupervised text to speech and automatic speech recognition》，《Natural tts synthesis by conditioning wavenet on mel spectrogram predictions》，《Tacotron: Towards end-to-end speech synthesis》)是人工智能领域的一个热点研究课题，其目的是从给定文本合成自然且可理解的语音。
+
+TTS 的研究已经从早期的串联合成(《Unit selection in a concatenative speech synthesis system using a large speech database》)、统计参数合成(《Emphasis: An emotional phoneme-based acoustic model for speech synthesis system》，《Merlin: An open source neural network speech synthesis system》)转向基于神经网络的参数合成(《Deep voice: Real-time neural text-to-speech》)和端到端模型(《Close to human quality tts with transformer》，《Clarinet: Parallel wave generation in end-to-end text-to-speech》，《Natural tts synthesis by conditioning wavenet on mel spectrogram predictions》，《Tacotron: Towards end-to-end speech synthesis》)，并且端到端模型合成的语音质量接近人类水平。
+
+基于神经网络的端到端 TTS 模型通常先将文本转换为声学特征(如梅尔谱图)，然后再将梅尔谱图转换为音频样本。
+然而，大多数神经 TTS 系统生成的语音谱图是自回归的，推理速度慢，合成语音通常缺乏鲁棒性(跳过词和重复)和控制性(语音速度或韵律控制)。在这项工作中，我们提出了快速语音非自回归生成梅尔谱图，充分解决了上述问题。
+
+**序列到序列学习**:
+序列到序列学习(《Neural machine translation by jointly learning to align and translate》，《Listen, attend and spell: A neural network for large vocabulary conversational speech recognition》，《Attention is all you need》)通常建立在编码器-解码器框架上：编码器将源序列作为输入并生成一组表示。然后，解码器在给定源表示及其前一个元素的情况下估计每个目标元素的条件概率。
+
+在编码器和解码器之间进一步引入注意机制(《Neural machine translation by jointly learning to align and translate》)，以便在预测当前元素时找到需要关注的源表示，(《Neural machine translation by jointly learning to align and translate》)是序列到序列学习的重要组成部分。在这项工作中，我们提出了一个前馈网络来并行生成序列，而不是使用传统的编码-注意-解码器框架进行序列对序列的学习。
+
+**非自回归序列生成**: 
+与自回归序列生成不同，非自回归模型并行生成序列，而不显式依赖于前面的元素，这可以大大加快推理过程。
+非自回归生成已经在一些序列生成任务中得到了研究，如神经机器翻译(《Non-autoregressive neural machine translation》，《Non-autoregressive neural machine translation with enhanced decoder input》，《Non-autoregressive machine translation with auxiliary regularization》)和音频合成(《Parallel wavenet: Fast high-fidelity speech synthesis》，《Clarinet: Parallel wave generation in end-to-end text-to-speech》，《Waveglow: A flow-based generative network for speech synthesis》)。
+
+我们的 FastSpeech 与上述工作有两个不同之处:
+1. 以前的工作主要是在神经机器翻译或音频合成中采用非自回归生成，以提高推理加速，而 FastSpeech 在 TTS 中既注重推理加速，又注重提高合成语音的鲁棒性和控制性。
+2. 对于 TTS 来说，虽然 Parallel WaveNet (《Parallel wavenet: Fast high-fidelity speech synthesis》)、 ClariNet (《Clarinet: Parallel wave generation in end-to-end text-to-speech》)和 WaveGlow (《Waveglow: A flow-based generative network for speech synthesis》)是并行产生音频的，但它们的条件是梅尔谱图，梅尔谱图仍然是自回归产生的。因此，他们没有解决这项工作中考虑到的挑战。
+
+还有一个并行工作(《Parallel neural text-to-speech》)，它也可以并行生成梅尔谱图。但是，它仍然采用了带注意机制的编码器-解码器框架：
+
+1. 与教师模型相比，需要 2~3 倍模型参数，从而实现了比 FastSpeech 更慢的推理速度；
+2. 不能完全解决跳过单词和重复的问题，而 FastSpeech 几乎消除了这些问题。
+
+#### 3.FastSpeech
+
+在本节中，我们将介绍 FastSpeech 的体系结构设计。
+为了并行生成目标梅尔谱图序列，我们设计了一种新的前馈结构，而不是采用大多数序列对序列的自回归(《Close to human quality tts with transformer》，《Natural tts synthesis by conditioning wavenet on mel spectrogram predictions》，《Attention is all you need》)和非自回归(《Non-autoregressive neural machine translation》，《Non-autoregressive neural machine translation with enhanced decoder input》，《Non-autoregressive machine translation with auxiliary regularization》)生成所采用的基于编码器-注意-解码器的结构。
+
+FastSpeech 的整体模型架构如下图所示。我们将在下面的小节中详细描述这些组件。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/08/p1.png" /> 
+    <p> (a) 前馈Transformer, (b) FFT block, (c) 长度调节器, (d) 持续时间预测器
+MSE损失是指预测时间到提取时间之间的损失，只存在于训练过程中 </p>
+<p>图 1 : FastSpeech的整体架构</p>
+</div>
+
+##### 3.1 前馈Transformer
+
+FastSpeech 的体系结构是基于 Transformer (《Attention is all you need》)中的自注意和 1D 卷积的前馈结构(《Convolutional sequence to sequence learning》，《Deep voice 3: 2000-speaker neural text-to-speech》)。
+我们称之为前馈Transformer ( Feed-Forward Transformer, FFT )，如上图a 所示。
+前馈 Transformer 堆叠多个 FFT 块用于音素到梅尔频谱图的转换，在音素一侧有 N 块，在梅尔频谱图一侧有 N 块，在音素和梅尔频谱图序列之间有一个长度调节器(将在下一小节中描述)，以弥合音素和梅尔频谱图序列之间的长度差距。
+每个 FFT 块由一个自注意和 1D 卷积网络组成，如上图b 所示。
+自注意网络由一个多头注意组成，用于提取交叉位置信息。
+与 Transformer 中的 2 层dense network不同，我们使用的是 ReLU 激活的 2 层 1D 卷积网络。
+其动机是相邻隐态在语音任务的字符/音素和梅尔频谱图序列上关系更密切。
+在实验部分，我们评估了1D卷积网络的有效性。
+在 Transformer之后，自注意网络和 1D 卷积网络分别添加了残差连接、层归一化和 Dropout 。
+
+##### 3.2 长度调节器（Length Regulator）
+
+长度调节器(上图c )用于解决前馈Transformer中音素和声谱序列长度不匹配的问题，并控制语音速度和部分韵律。
+音素序列的长度通常小于其梅尔频谱图序列的长度，每个音素对应几个梅尔频谱图声谱。
+我们将对应于音素的梅尔频谱图的长度称为音素持续时间(我们将在下一个小节中描述如何预测音素持续时间)。
+长度调节器以音素持续时间$d$ 为基础，将音素序列的隐藏状态扩展 $d$次，隐藏状态的总长度等于梅尔频谱图的长度。
+表示音素序列的隐藏状态为 $\mathcal{H}_ {pho}=[h_1,h_2,...,h_n]$ ，其中 $n$为序列的长度。
+将音素持续时间序列表示为 $\mathcal{D} = [d_1,d_2,...,d_n]$，其中 $\sum_{i=1}^nd_i=m$ ，$m$ 为梅尔谱图序列的长度。
+我们将长度调节器 $\mathcal{LR}$ 表示为:
+$$\mathcal{H}_ {mel}=\mathcal{LR}(\mathcal{H}_ {pho},D,α)(1)$$
+
+其中$\alpha$ 是一个超参数，用来确定扩展序列$\mathcal{H}_ {mel}$的长度，从而控制语音速度。
+例如，给定 $\mathcal{H}_ {pho} = [h_1,h_2,h_3,h_4]$，对应的音位持续时间序列$\mathcal{D} =[2,2,3,1]$ ，如果 $\alpha = 1$(正常速度)，则基于公式 1 的扩展序列$\mathcal{H}_ {mel}$
+为 $[h_1,h_1,h_2,h_2,h_3,h_3,h_3,h_4]$。当$\alpha = 1.3$ (慢速)和 $0.5$(速度快)，持续时间序列成为 $\mathcal{D}_ {\alpha=1.3}=[2.6,2.6,3.9,1.3]\approx[3,3,4,1]$和 $\mathcal{D}_ {\alpha=0.5}=[1,1,1.5,0.5]\approx[1,1,2,1]$和扩展序列成为 $[h_1,h_1,h_1,h_2,h_2,h_2,h_3,h_3,h_3,h_3,h_4]$和 $[h_1,h_2,h_3,h_3,h_4]$,我们还可以通过调整句子中空格字符的持续时间来控制词间的间隔，从而调整合成语音的部分韵律。
+
+##### 3.3 持续时间预测(Duration Pedictor)
+
+音素持续时间预测对于长度调节器是重要的。如上图d 所示，持续时间预测器由一个 ReLU 激活的 2 层 1D 卷积网络组成，每一层都进行层归一化和 Dropout 层，再增加一个线性层输出一个标量，这就是预测的音素持续时间。需要注意的是，该模块被叠加在音素侧的 FFT 块的顶部，并与 FastSpeech 模型联合训练，以预测每个音素的梅尔频谱图的长度，并损失均方误差( MSE )。
+
+我们在对数域中预测长度，这使它们更高斯化，更容易训练。
+请注意，训练持续时间预测器只在 TTS 推理阶段使用，因为我们可以在训练中直接使用从自回归教师模型中提取的音素持续时间(见下面的讨论)。为了训练持续时间预测器，**我们从一个自回归的教师 TTS 模型中提取了真实情况音素持续时间**，如上图d 所示。我们描述的详细步骤如下：
+1. 我们首先训练一个自回归的基于编码器-注意-解码器的 Transformer TTS 模型跟随(《Close to human quality tts with transformer》)。
+2. 对于每个训练序列对，我们从训练教师模型中提取解码器到编码器的注意对齐。由于多头自我注意(《Attention is all you need》)存在多重注意对齐，并不是所有的注意头都表现出对角线性质(音素和梅尔频谱图序列是单调对齐的)。我们建议关注率 $F$ 衡量一个注意力head接近对角线注意：$F = \frac1S\sum_{s=1}^S\,max_{1\le{t}\le{T}}\,a_{s,t}$，其中 $S$ 和 $T$ 为真实情况声谱图和音素的长度， $a_{s,t}$为注意矩阵的第 $s$行和第 $t$列的元素。我们计算每个head的聚焦率，并选择 $F$ 值最大的头部作为注意力对齐。
+3. 最后提取音位持续时间序列 $\mathcal{D}=[d_1,d_2,...,d_n]$根据时间提取器 $d_i=\sum^S_{s=1}[arg\,max_t\,a_{s,t}=i]$。也就是说，音素的持续时间是根据上述步骤中选择的注意头所关注的梅尔频谱图的数量。
+
+#### 4.实验设置
+
+##### 4.1 数据集
+
+我们在 LJSpeech 数据集(《The lj speech dataset》)上进行实验，该数据集包含 13100 个英语音频片段和相应的文本文本，总音频长度约为 24 小时。我们将数据随机分成 3 组： 12500 个样本用于训练， 300 个样本用于验证， 300 个样本用于测试。为了减轻发音错误的问题，我们使用内部的字素到音素转换工具(《Tokenlevel ensemble distillation for grapheme-to-phoneme conversion》)将文本序列转换为音素序列，后面是(《Deep voice: Real-time neural text-to-speech》，《Natural tts synthesis by conditioning wavenet on mel spectrogram predictions》，《Tacotron: Towards end-to-end speech synthesis》)。对于语音数据，我们将原始波形转换为(《Natural tts synthesis by conditioning wavenet on mel spectrogram predictions》)后的梅尔谱图。我们的帧大小和跳数大小分别设置为 1024 和 256 。为了评估我们提出的 FastSpeech 的鲁棒性，我们还根据(《Deep voice 3: 2000-speaker neural text-to-speech》)的实践，选择了 50 个 TTS 系统特别难的句子。
+
+##### 4.2 模型配置
+
+我们的 FastSpeech 模型由 6 个 FFT 块组成，分别在音素侧和梅尔谱图侧。包括标点符号在内的音素词汇量为 51 个。FFT 块中的音素嵌入维数、自注意隐藏大小和一维卷积均设为 384 。注意头的数量设置为 2 。2 层卷积网络中 1D 卷积的核大小都设为 3 ，第一层输入输出大小为 `384/1536` ，第二层为 `1536/384` 。输出线性层将 384 维的隐藏图转换为 80 维的梅尔谱图。在我们的持续时间预测器中，1D卷积的核大小设置为 3 ，两个层的输入/输出大小都是 `384/384` 。
+       
+自回归 Transformer TTS 模型有两个目的：
+1. 提取音素持续时间作为训练持续时间预测器的目标；
+2. 在序列级知识蒸馏(下节将介绍)中生成梅尔谱图。
+
+这个模型的配置参考(《Close to human quality tts with transformer》)，它由一个 6 层编码器和一个 6 层解码器组成，除了我们使用1D卷积网络而不是根据位置的 FFN 。该教师模型的参数个数与我们的 FastSpeech 模型相似。
+
+##### 4.3 训练和推理
+
+我们首先在 4 个 NVIDIA V100 GPU上训练自回归 Transformer TTS 模型，每个GPU上批量训练 16 个句子。
+我们使用了$\beta_1=0.9,\beta_2=0.98,\varepsilon=10^{-9}$的 Adam 优化器，并在(《Attention is all you need》)中遵循相同的学习率计划。训练到收敛需要 80k 步。我们将训练集中的文本和语音对再次输入到模型中，得到编码器-解码器注意对齐，用于训练持续时间预测器。
+
+此外，我们还利用在非自回归机器翻译(《Nonautoregressive neural machine translation》，《Non-autoregressive neural machine translation with enhanced decoder input》，《Non-autoregressive machine translation with auxiliary regularization》)中表现良好的序列级知识蒸馏(《Sequence-level knowledge distillation》)，将知识从教师模型转移到学生模型。
+对于每个源文本序列，我们使用自回归 Transformer TTS 模型生成梅尔谱图，并将源文本和生成的梅尔谱图作为配对数据进行 FastSpeech 模型训练。
+       
+我们将 FastSpeech 模型与持续时间预测器一起训练。FastSpeech 的优化器和其他超参数的与自回归 Transformer TTS 模型是相同的。
+FastSpeech 模型训练在 4 个 NVIDIA V100 GPU 上大约需要 80k 步。在推理过程中，使用预先训练的 WaveGlow (《Waveglow: A flow-based generative network for speech synthesis》)将我们的 FastSpeech 模型输出的梅尔谱图转换为音频样本。
+
+#### 5.结果
+
+在本节中，我们将从音频质量、推理加速、鲁棒性和可控性方面评估 FastSpeech 的性能。
+       
+**音频质量**:我们对测试集进行 MOS (平均意见得分)评估，以衡量音频质量。
+为了排除其他干扰因素，我们保持不同模型之间的文本内容一致，只检查音频质量。每段音频都有至少 20 名母语为英语的测试人员聆听。
+我们将 FastSpeech 模型生成的音频样本的 MOS 值与其他系统进行了比较，这些系统包括（1）GT ，真实音频；（2） GT (Mel + WaveGlow) ，其中我们首先将真实音频转换为Mel声谱图，然后使用 WaveGlow 将 Mel 频谱图转换回音频；（3） Tacotron 2 (Mel + WaveGlow) ； Transformer TTS (Mel + WaveGlow) ；（5） Merlin (WORLD) 是一种常用的参数 TTS 系统，以 WORLD 为声码器。结果如下表所示。可以看出，我们的 FastSpeech 几乎可以媲美 Transformer TTS 模型和 Tacotron 2 的质量。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/08/p2.png" /> 
+</div>
+
+**推理加速**： 与自回归 Transformer TTS 模型相比，我们评估了 FastSpeech 的推理延迟，自回归 Transformer TTS 模型与 FastSpeech 具有相似的模型参数数量。我们首先在下表 中显示了梅尔谱图生成的推理速度。可以看出，与 Transformer TTS 模型相比， FastSpeech 的梅尔谱图生成速度加快了 269.40 倍。然后，当使用 WaveGlow 作为声码器时，我们展示了端到端加速。可以看出， FastSpeech 仍然可以实现 38.30 倍的音频生成加速。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/08/p3.png" /> 
+</div>
+
+我们还可视化了推理延迟和测试集中预测梅尔谱图序列长度之间的关系。下图显示，对于 FastSpeech ，推断延迟几乎不随预测梅尔谱图的长度增加，而在 Transformer TTS 中则大幅增加。这表明，由于并行生成，我们的方法的推理速度对生成音频的长度不敏感。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/08/p4.png" /> 
+</div>
+
+**鲁棒性**：自回归模型中的编码器-解码器注意机制可能会导致音素和梅尔谱图之间的错误注意对齐，导致单词重复和跳过的不稳定性。
+为了评估 FastSpeech 的鲁棒性，我们选择了 50 个 TTS 系统特别难的句子。
+下表列出了单词错误计数。可以看出， Transformer TTS 对这些困难情况不具有鲁棒性，错误率为 34% ，而 FastSpeech 可以有效消除重复和跳过单词，提高可读性。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/08/p5.png" /> 
+</div>
+
+**长度控制**：如第 3.2 节所述， FastSpeech 可以通过调整音素持续时间来控制语音速度和部分韵律，这是其他端到端 TTS 系统所不支持的。我们展示了长度控制前后的梅尔谱图，并将音频样本放在补充材料中供参考。
+       
+通过延长或缩短音素持续时间，生成不同语音速度下的梅尔频谱图如下图所示。从样本中可以看出， FastSpeech 可以平滑地将语音速度从 `0.5x` 调整到 `1.5x` ，音高稳定且几乎没有变化。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/08/p6.png" /> 
+</div>
+
+词间停顿快速语音通过延长句子中空格字符的持续时间来增加相邻词之间的停顿，从而提高语音的韵律。我们在下图 中展示了一个例子，我们在句子的两个位置添加停顿来改善韵律。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/08/p7.png" /> 
+</div>
+
+**消融实验**：我们进行了消融研究来验证 FastSpeech 中几个组件的有效性，包括1D卷积和序列级知识蒸馏。我们对这些消融研究进行 CMOS 评估。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/08/p8.png" /> 
+</div>
+
+我们提出用 FFT 块的1D卷积来代替原来的全连通层( Transformer 中采用的)，详见 3.1 节。
+这里我们进行了实验来比较1D卷积的性能与具有相似参数数的全连接层。
+如上表所示，在 -0.113 CMOS 中，用全连通层代替1D卷积得到的结果表明了1D卷积的有效性。
+       
+如第 4.3 节所述，我们在 FastSpeech 中利用了序列级知识蒸馏。
+我们进行 CMOS 评估，比较有无序列级知识蒸馏的 FastSpeech 的性能，如上表所示。我们发现 -0.325 CMOS 中去除序列级知识蒸馏的结果，证明了序列级知识蒸馏的有效性。
+
+#### 6.结论
+
+在这项工作中，我们提出了 FastSpeech ：一个快速，鲁棒和可控的神经 TTS 系统。
+FastSpeech 采用了一种新颖的前馈网络并行生成梅尔谱图，该网络由几个关键部件组成，包括前馈 Transformer 模块、长度调节器和持续时间预测器。
+在 LJSpeech 数据集上的实验表明，我们提出的 FastSpeech 在语音质量上几乎可以匹配自回归 Transformer TTS 模型，将梅尔谱图的生成速度提高了 270 倍，将端到端语音合成速度提高了 38 倍，几乎消除了跳词和重复的问题。可以平滑调节语音速度(`0.5x` `1.5x`)。
+       
+在未来的工作中，我们将继续提高合成语音的质量，并将 FastSpeech 应用于多扬声器和低资源设置。我们还将联合训练 FastSpeech 与并行神经声码器，使其完全端到端的并行。
+
+------
+
+### 9. FastSpeech 2: Fast and High-Quality End-to-End Text to Speech
 
 !> https://arxiv.org/abs/2006.04558
 
@@ -1889,6 +2097,7 @@ Figure3 b显示了与(Battenberg等，2019)类似的结果。Tacotron 2的CER在
 
 <!-- https://blog.csdn.net/weixin_42721167/article/details/119783774 -->
 <!-- https://zhuanlan.zhihu.com/p/420863679 -->
+
 
 
 <!-- # Flow -->
