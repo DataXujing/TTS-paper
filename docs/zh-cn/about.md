@@ -29,6 +29,8 @@
 |2023-12-08            |  TransformerTTS  |
 |2023-12-10           |  Glow-TTS  |
 |2023-12-10           |  FastSpeech  |
+|2023-12-10           |  FastSpeech 2/2s  |
+
 
 
 

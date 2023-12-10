@@ -2087,9 +2087,145 @@ FastSpeech 采用了一种新颖的前馈网络并行生成梅尔谱图，该网
 
 <!-- https://blog.csdn.net/weixin_42721167/article/details/118934862 -->
 
+#### 摘要
 
+先进的文本到语音(TTS)模型，如FastSpeech(《Fastspeech: Fast, robust and controllable text to speech》)，可以明显更快地合成语音，比以前的自回归模型具有相同的质量。FastSpeech模型的训练依赖于自回归教师模型进行时长预测(以提供更多的信息作为输入)和知识蒸馏(以简化输出中的数据分布)，可以缓解TTS中的一对多映射问题(即多个语音变体对应同一文本)。
+然而，FastSpeech有几个缺点：1）教师-学生蒸馏管道复杂；2）从教师模型提取的持续时间不够准确，教师模型提取的目标梅尔频谱图由于数据简化而存在信息丢失的问题，限制了语音质量。
+在本文中，我们提出了FastSpeech 2，它解决了FastSpeech中的问题，更好地解决了TTS中的一对多映射问题，通过（1）直接用真实的目标训练模型，而不是教师的简化输出；（2）引入更多的语音变化信息(如音调、能量和更准确的持续时间)作为条件输入。
+具体来说，我们从语音波形中提取时长、音高和能量，在训练时直接作为条件输入，在推理时使用预测值。我们进一步设计了FastSpeech 2s，这是第一次尝试直接从文本并行生成语音波形，享受完整的端到端训练的好处，甚至比FastSpeech更快的推理。
+实验结果表明：（1）FastSpeech 2/2s在语音质量上优于FastSpeech，简化了训练管道，减少了训练时间；（2） FastSpeech 2/2s可以匹配自回归模型的语音质量，同时具有更快的推理速度。
 
+#### 1.介绍
 
+近年来，基于神经网络的文本语音转换(TTS)得到了快速的发展。以前神经TTS模型如Tacotron (《Tacotron: Towards end-to-end speech synthesis》)， Tacotron 2 (《Natural tts synthesis by conditioning wavenet on mel spectrogram predictions》)，Deep Voice 3 (《Deep voice 3: 2000-speaker neural text-to-speech》)和Transformer TTS (《Neural speech synthesis with transformer network》)首先从文本中自回归生成梅尔频谱图，然后使用单独训练的声码器从生成的梅尔频谱图合成语音(例如，WaveNet (《Wavenet: A generative model for raw audio》)， WaveGlow (《Waveglow: A flow-based generative network for speech synthesis》)和Parallel WaveGAN (《Parallel wavegan: A fast waveform generation model based on generative adversarial networks with multi-resolution spectrogram》))。它们通常具有较慢的推理速度和稳健性(跳过单词和重复)问题(《Fastspeech: Fast, robust and controllable text to speech》)。近年来，非自回归TTS模型(《Jdi-t: Jointly trained duration informed transformer for text-to-speech without explicit alignment》，《Flowtts: A non-autoregressive network for text to speech based on flow》，《Parallel neural text-to-speech》，《Fastspeech: Fast, robust and controllable text to speech》)被设计用于解决这些问题，它以极快的速度生成梅尔频谱图，避免了鲁棒性问题，同时实现了与以往自回归模型相当的语音质量。
+
+#### 2.方法
+
+在本节中，我们首先描述了FastSpeech 2的设计动机，然后介绍了FastSpeech 2的体系结构，旨在改进FastSpeech，以更简单的训练管道和更高的语音质量更好地处理一对多映射问题。
+
+##### 2.1 动机
+
+TTS是典型的一对多映射问题(《An asymetric cycle-consistency loss for dealing with many-to-one mappings in image translation: A study on thigh mr scans》，《One-to-many neural network mapping techniques for face image synthesis》，《Toward multimodal image-to-image translation》)，由于语音音频的不同变化，如音高、持续时间、音量和韵律，多个可能的语音序列可以对应一个文本序列。在自回归TTS中，解码器可以根据文本序列和之前的梅尔频谱图来预测下一个梅尔频谱图，而之前的梅尔频谱图可以提供一些变异信息，从而在一定程度上缓解了这一问题。而在非自回归TTS中，唯一的输入信息是文本，不足以完全预测语音中的方差。在这种情况下，模型容易对训练集中目标语音的变化进行过拟合，导致泛化能力较差。
+       
+FastSpeech设计了两种方法来缓解一对多映射问题：（1）通过目标方的知识蒸馏来减少数据变量，通过对目标进行简化来缓解一对多映射问题；（2）引入持续时间信息(从教师模型的注意图中提取)，扩展文本序列以匹配梅尔频谱图序列的长度，提供更多的输入信息，缓解一对多映射问题。
+虽然从教师模型中提取的知识提炼和时长信息可以提高FastSpeech的训练效果，但也带来了几个问题：（1）两阶段的师生训练管道使得训练过程变得复杂；（2）从教师模型中提取的目标梅尔频谱图与真实频谱图相比有一定的信息损失，因为生成的梅尔频谱图合成的音频质量通常比真实频谱图差，如表1所示；（3）从教师模型的注意图中提取的时长不够准确，分析如表4a所示。
+       
+在FastSpeech 2中，我们通过以下方法解决了这些问题：（1）去除教师-学生蒸馏，以简化训练流程；（2）以真实语音为训练目标，避免信息丢失；（3）提高持续时间精度，引入更多的方差信息，以缓解真实语音预测中的一对多映射问题。在接下来的小节中，我们将介绍FastSpeech 2的详细设计。
+
+##### 2.2 模型概述
+
+FastSpeech 2的整体模型架构如图1a所示。编码器将音素序列转换为隐藏序列，变量适配器将不同的变量信息(如持续时间、音高和能量)添加到隐藏序列中，梅尔谱解码器将自适应的隐藏序列并行转换为梅尔谱序列。我们使用前馈 Transformer块作为编码器和梅尔谱图解码器的基本结构，它是一个自注意(《Attention is all you need》)层和一维卷积的堆栈，就像FastSpeech中的(《Fastspeech: Fast, robust and controllable text to speech》)。与依赖教师-学生蒸馏管道和教师模型的音素持续时间的FastSpeech不同，FastSpeech 2做了几个改进。
+
+首先，我们去掉了师生蒸馏管道，直接使用真实的梅尔谱图作为模型训练的目标，避免了梅尔谱图中信息的丢失，增加了语音质量的上界。
+
+其次，我们的变量适配器不仅包括长度调节因子，还包括音调和能量预测因子，其中：（1）长度调节因子使用强制对齐(《Montreal forced aligner: Trainable text-speech alignment using kaldi》)获得的音素持续时间，比自回归教师模型提取的音素持续时间更准确；（2）附加的基音和能量预测器可以提供更多的变量信息，这对于解决TTS中的一对多映射问题非常重要。
+
+第三，为了进一步减少训练管道，并将其推进到完全的端到端系统，我们提出了FastSpeech 2s，它直接从文本生成波形，而不需要级联梅尔谱图生成(声学模型)和波形生成(声码器)。在下面的小节中，我们描述了在我们的方法中变量适配器的详细设计和直接波形的产生。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/09/p1.png" /> 
+</div>
+
+##### 2.3 变量适配器
+
+变量适配器的目的是向音素隐藏序列中添加变量信息(如持续时间、音高、能量等)，为TTS中的一对多映射问题提供足够的信息来预测变异语音。如图1b所示，变量适配器包括（1）持续时间预测器(即，长度调节器，如在FastSpeech中使用)，（2）音高预测器，（3）能量预测器。更多的变量信息可以添加到变量适配器中，这将在下面的段落中讨论。
+
+**变量预测**：如图1c所示，变量预测器与FastSpeech中的持续时间预测器有着相似的模型结构，以隐藏序列为输入，以均方误差(MSE)损失预测每个音素(持续时间)或帧(音高和能量)的方差。变量预测器包括一个具有ReLU激活的2层1D卷积网络，每个层随后是层归一化和Drpout，以及一个额外的线性层，用于将隐藏状态投影到输出序列中。对于持续时间预测器，输出是对数域中每个音素的长度。对于基音预测器，输出序列为帧级基频序列(F0)。对于能量预测器，输出的是每个梅尔谱帧的能量序列。所有预测器共享相同的模型结构，但不共享模型参数。
+
+**变量信息的细节**:除了文本之外，语音音频通常还包含许多其他的变量信息，包括（1）音素持续时间，它代表了语音发声的速度；（2）音高，音高是传达情感的重要特征，对感知有重要影响；（3）能量，能量表示熔体谱图的帧级量级，直接影响熔体谱图计算的损耗；（4）情感，风格，演讲者等等。变量信息不完全由文本决定，由于一对多映射问题，不利于非自回归TTS模型的训练。在这段中，我们描述了如何在方差适配器中使用音高，能量和持续时间的细节。
+
+**持续时间**:为了提高对齐精度，从而减少模型输入和输出之间的信息差距，我们没有使用预先训练的自回归TTS模型提取音素持续时间，而是使用MFA(《Montreal forced aligner: Trainable text-speech alignment using kaldi.》)提取音素持续时间，这是一个性能良好的开源语音文本对齐系统。该方法可以在文本音频成对语料库上进行训练，无需任何手动对齐标注。我们将MFA生成的比对结果转换为音位级持续时间序列，并将其输入长度调节器，以扩展音位序列的隐藏状态。
+       
+**音高和能量**:我们从目标梅尔频谱图相同跳数的原始波形中提取F0，得到每一帧的基音，并计算每一帧STFT幅值的l2 -范数作为能量。然后我们将每一帧的F0和能量量化为256个可能的值，并将它们分别编码为one-hot向量序列（ $p$ 和 $e$ ）。在训练过程中，我们查找 $p$ 和 $e$ 嵌入的音高和能量，并将它们添加到隐藏序列中。俯仰和能量预测器直接预测F0和能量的值，而不是one-hot向量，并采用均方误差进行优化。在推断过程中，我们使用变量预测器预测F0和能量
+
+##### 2.4 FastSpeech 2s
+
+为了简化文本到波形生成流水线，并在文本到波形生成中实现端到端训练和推理，本小节中，我们提出了FastSpeech 2s，它直接从文本生成波形，而不需要级联的梅尔谱图生成(声学模型)和波形生成(声码器)。我们首先讨论了非自回归文本到波形生成的挑战，然后描述了FastSpeech 2s中的细节，包括模型结构、训练和推理过程。
+
+**文本到波形生成的挑战**:在将TTS管道推向完全端到端框架时，有几个挑战：（1）由于波形比梅尔谱图包含更多的方差信息(如相位)，输入和输出之间的信息差距比文本到谱图的生成更大；（2）与全文序列对应的音频剪辑，由于波形样本非常长，存储空间有限，训练难度较大。这样，我们只能在一个部分文本序列对应的短音频片段上进行训练，使得模型难以捕捉不同部分文本序列中音素之间的关系，不利于文本特征提取。
+
+**本方法**为了解决上述问题，我们在波形解码器中进行了几个设计：（1）考虑到相位信息难以用变量预测器(《Ddsp: Differentiable digital signal processing》)预测，我们在波形解码器中引入对抗训练，迫使其通过自身隐式恢复相位信息；（2）利用对全文序列进行训练的梅尔谱图解码器来帮助提取文本特征。如图1d所示，波形解码器基于WaveNet的结构，包括非因果卷积和门控激活(《Conditional image generation with pixelcnn decoders.》)。
+
+该波形解码器将对应于一个短音频剪辑的切片隐藏序列作为输入，并通过转置的1D卷积对其进行上采样，以匹配音频剪辑的长度。对抗性训练中的鉴别器采用了与并行WaveGAN中相同的结构。该波形解码器是通过计算多个不同STFT损耗和Parallel WaveGAN后鉴别器损耗的总和来优化的。在推理过程中，我们摒弃了梅尔谱图解码器，只使用波形解码器合成语音音频。
+
+#### 3.实验与结果
+##### 3.1 实验设置
+
+**数据集**:我们在LJSpeech数据集(《The lj speech dataset》)上评估FastSpeech 2。LJSpeech包含13100个英文音频片段(约24小时)和相应的文本文本。我们将数据集分为3个集：12228个样本用于训练，349个样本(文档标题为LJ003)用于验证，523个样本(文档标题为LJ001和LJ002)用于测试。为了减轻发音错误的问题，我们使用开源字素-音素工具将文本序列转换为音素序列(《Deep voice: Real-time neural text-to-speech》，《Natural tts synthesis by conditioning wavenet on mel spectrogram predictions》，《Tacotron: Towards end-to-end speech synthesis》)。我们按照Shen等人的方法将原始波形转换为梅尔谱图，并设置帧大小和跳数大小为1024和256，采样率为22050。
+
+**模型结构**:我们的FastSpeech 2由编码器和梅尔谱图解码器中的4个前馈Transformer(FFT)块(《Fastspeech: Fast, robust and controllable text to speech》)组成。在每个FFT块中，将音素嵌入的维数和自注意的隐藏大小设置为256。设置注意头个数为2，设置自注意层后的2层卷积网络中1D卷积的核大小分别为9和1，第一层输入/输出大小为256/1024，第二层输入/输出大小为1024/256。输出线性层将256维隐藏状态转换为80维梅尔谱图，并采用平均绝对误差(MAE)进行优化。
+音素词汇量为76个，包括标点符号。在方差预测器中，1D卷积的核大小被设置为3，两个层的输入/输出大小都是256/256，dropout rate被设置为0.5。我们的波形解码器由1层转置的1D卷积(核大小 64)和30层膨胀的残差卷积块组成，其跳跃通道大小和1D卷积核大小分别设置为64和3。FastSpeech 2s中鉴别器的配置与Parallel WaveGAN相同。
+       
+**训练和推理**:我们在1个NVIDIA V100 GPU上训练FastSpeech 2，成批大小为48个句子。我们使用具有 $\beta_1 = 0.9,\beta_2 = 0.98,ε = 10^{-9}$的Adam优化器，并在(《Attention is all you need》)中遵循相同的学习率计划。训练到收敛需要16万步。在推理过程中，我们的FastSpeech 2的输出谱图被转换成音频样本使用预先训练的Parallel WaveGAN。对于FastSpeech 2s，我们在2个NVIDIA V100图形处理器上训练模型，每个图形处理器的批处理大小为6个句子。波形解码器将20480个波形样本剪辑对应的切片隐藏状态作为输入。FastSpeech 2s的优化器和学习率时间表与FastSpeech 2相同。对抗训练的细节与Parallel WaveGAN一致。FastSpeech 2需要60万步的训练收敛。
+
+##### 3.2 实验结果
+
+在本节中，我们首先评估FastSpeech 2/2s的音频质量、训练和推理加速。然后我们对我们的方法进行分析和消融研究。
+
+###### 3.2.1 FastSpeech 2 的性能
+
+**音频质量**: 为了评价知觉质量，我们对测试集进行了平均意见得分(《Objective measure for estimating mean opinion score of synthesized speech》)评价。要求20名母语为英语的人对合成的语音样本作出质量判断。不同系统间的文本内容保持一致，所以所有测试人员只检查音频质量而不受其他干扰因素的影响。我们将FastSpeech 2和FastSpeech 2s生成的音频样本的MOS值与其他系统进行了比较，包括（1）GT， ground-truth录音；（2） GT (Mel + PWG)，其中我们首先将ground-truth音频转换为梅尔频谱图，然后使用Parallel WaveGAN (PWG)将梅尔频谱图转换回音频；（3） Tacotron 2 (Mel + PWG)；（4）Transformer TTS (Mel + PWG)；5) FastSpeech (Mel + PWG)。（3）、（4）和（5）中的所有系统都使用Parallel WaveGAN作为声码器进行公平比较。
+
+结果如表1所示。可以看出，我们的FastSpeech 2/2s可以匹配自回归模型Transformer TTS和Tacotron 2的语音质量。重要的是，FastSpeech 2/2s的性能优于FastSpeech，证明了FastSpeech可以有效地提供音高、能量和更准确的持续时间等方差信息，并且可以不使用师生蒸馏管道直接将真实语音作为训练目标。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/09/p2.png" /> 
+</div>
+
+**训练和推理加速**:FastSpeech 2通过去掉师生蒸馏过程，简化了FastSpeech的训练管道，从而减少了训练时间。我们在表2中列出了Transformer TTS(自回归教师模型)、FastSpeech(包括Transformer TTS教师模型和FastSpeech学生模型的训练)和FastSpeech 2的总训练时间。可以看出，FastSpeech 2比FastSpeech减少了`3.22x`的总训练时间。
+
+注意，这里的训练时间只包括声学模型训练，不考虑声码器训练。因此，我们在这里不比较FastSpeech 2s的训练时间。然后，我们评估了FastSpeech 2/2s与自回归Transformer TTS模型相比的推断延迟，该模型参数的数量与FastSpeech 2/2s相似。我们在表2中显示了波形产生的推理加速。可以看出，与Transformer TTS模型相比，FastSpeech 2/2s在波形合成方面的音频生成速度分别提高了149倍和170倍，，这表明由于FastSpeech 2完整的端到端生成和梅尔频谱图解码器的去除，FastSpeech 2s比FastSpeech快。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/09/p3.png" /> 
+</div>
+
+###### 3.2.2 变量信息分析
+
+**更好的优化和泛化**:为了分析引入变量信息对模型优化和泛化的影响，我们在图2中绘制了FastSpeech和FastSpeech 2在训练和验证集上的梅尔谱图损失曲线。从训练损失曲线可以看出，FastSpeech 2的训练损失比FastSpeech小，说明提供的变量信息(音高、能量和更准确的持续时间)可以帮助模型优化。培训和确认损失曲线之间的每一个模型,我们可以看到，FastSpeech 2的训练和验证损失缺口在160k的步骤(0.037)小于FastSpeech在160k的步骤(0.119),这表明引入方差信息(音高、能源和更精确的时间)可以提高泛化。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/09/p4.png" /> 
+</div>
+
+**合成语音中更准确的方差信息**：为了验证提供更多的变量信息(例如音高和能量)作为输入是否确实可以合成出更准确的音高和能量，我们比较了FastSpeech和FastSpeech 2合成语音的音高和能量的准确性。我们通过计算从产生的波形中提取的帧级基音/能量和真实语音之间的平均绝对误差(MAE)来计算精度。为了保证合成语音和真实语音的帧数相同，我们在FastSpeech和FastSpeech 2中都使用了MFA提取的真实时间。结果如表3所示。可以看出，与FastSpeech相比，FastSpeech 2/2s都可以合成出与真实音频具有更相似的音高和能量的语音音频
+
+<div align=center>
+    <img src="zh-cn/img/ch3/09/p5.png" /> 
+</div>
+
+**更准确的模型训练时间**：然后，我们分析了所提供的持续时间信息的准确性来训练持续时间预测器，以及更准确的持续时间对更好的语音质量的有效性。我们手动将50个音频和相应的文本按音素级进行对齐，得到真实的音素级持续时间。我们分别利用FastSpeech的教师模型和本文使用的MFA模型计算绝对音素边界差的平均值。结果如表4a所示。
+
+我们可以看到，MFA比FastSpeech的教师模型能够生成更准确的时长。接下来，我们将教师模型中使用的时长替换为MFA提取的时长，并进行CMOS测试，比较使用不同时长训练的两个FastSpeech模型的语音质量。结果如表4b所示，可以看出，持续时间信息越准确，FastSpeech的语音质量就越好，这验证了我们从MFA改进的持续时间的有效性。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/09/p6.png" /> 
+</div>
+
+###### 3.2.3 消融实验
+
+在本小节中，我们进行消融研究来证明FastSpeech 2/2s的几个方差信息的有效性，包括音调和能量。我们对这些烧蚀研究进行CMOS评估。结果如表5所示。我们发现移除能量方差(第2行两个子类型)FastSpeech 2/2s导致性能下降的声音质量(CMOS分别 -0.045 和 -0.150 )，表明能量方差可以略微提高声音质量FastSpeech 2,但是对于FastSpeech 2s更有效。
+
+我们还发现，在FastSpeech 2/2s中去除基音方差(两个子表中的第3行)分别得到 -0.230 和 -1.045 的CMOS，这证明了基音方差的有效性。当我们去掉音高和能量差异(在两个子表的第4行)，语音质量进一步下降，这表明音高和能量差异一起帮助提高FastSpeech 2/2s的性能。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/09/p7.png" /> 
+</div>
+
+###### 3.2.4 变量控制
+FastSpeech 2/2s引入了一些方差信息来缓解TTS中的一对多映射问题。作为一种副产品，它们还使合成语音更加可控。作为一个演示，我们操纵音高输入来控制合成语音的音高。我们在图3中显示了在音高操纵前后的梅尔谱图。从样品中我们可以看到，FastSpeech 2在调整 $\hat{F}_ 0$后产生了高质量的梅尔谱图。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/09/p8.png" /> 
+</div>
+
+#### 4.结论
+
+针对FastSpeech中存在的问题，我们提出了一个快速、高质量的端到端TTS系统FastSpeech 2，解决了一对多映射问题：（1）我们直接使用真实梅尔频谱图来训练模型，简化了训练管道，同时也避免了与FastSpeech相比的信息丢失；（2）我们提高了持续时间的精度，并引入更多的方差信息，包括基音和能量，以缓解一对多映射问题。
+
+此外，在FastSpeech 2的基础上，我们进一步开发了FastSpeech 2s，这是一个非自回归的文本到波形生成模型，它具有完整的端到端训练和推理的优点。我们的实验结果表明，FastSpeech 2/2s在继承FastSpeech快速、鲁棒、可控语音合成优点的同时，训练管道更简单，在语音质量方面可以超越FastSpeech。在未来，我们将考虑更多的方差信息，以进一步改善语音质量，并将进一步加快推理的轻量级模型。
+
+------
 
 ### 10. FastPitch
 
