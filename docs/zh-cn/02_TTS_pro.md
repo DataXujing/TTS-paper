@@ -29,6 +29,8 @@
 
 [11]. <https://github.com/wenet-e2e/wetts>
 
+[12]. [一文了解语音合成经典论文，架构及最新语音合成调研【20231213更新版】](https://blog.csdn.net/weixin_44649780/article/details/129402750)
+
 
 <!-- https://mp.weixin.qq.com/s/GHkc1DN4Dozzz50Fq8m3kQ -->
 

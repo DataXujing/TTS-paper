@@ -22,7 +22,7 @@
 ### 7. WaveGrad
 
 
-### 8. HiFiGAN
+### 8. HiFiGAN V1/V2
 
 
 

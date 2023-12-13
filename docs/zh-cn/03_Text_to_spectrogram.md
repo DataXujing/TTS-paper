@@ -1081,10 +1081,10 @@ Deep Voice 2 语音模型基于一个 WaveNet 架构(《Wavenet: A generative mo
 与以前的工作不同，我们的方法不依赖于每个说话人的权重矩阵或层。
 与说话人相关的参数存储在一个非常低维的向量中，因此在说话人之间有几乎完全的权重共享。
 我们使用说话人嵌入来产生递归神经网络( RNN )初始状态、非线性偏差和乘法门控因子，并在整个网络中使用。
-说话人嵌入随机初始化，均匀分布在`[ – 0.1, 0.1]`，并通过反向传播联合训练。每个模型都有自己的一套扬声器嵌入。
+说话人嵌入随机初始化，均匀分布在`[ – 0.1, 0.1]`，并通过反向传播联合训练。每个模型都有自己的一套speaker嵌入。
 
 为了鼓励每个说话人的独特声音特征影响模型，我们将说话人嵌入到模型的多个部分。
-根据经验，我们发现仅仅提供扬声器嵌入输入层不适用于任何模型，除了发音模型。这可能使由于高度的残余 WaveNet 连接存在，以及学习高品质说话人嵌入的难度导致。
+根据经验，我们发现仅仅提供speaker嵌入输入层不适用于任何模型，除了发音模型。这可能使由于高度的残余 WaveNet 连接存在，以及学习高品质说话人嵌入的难度导致。
 我们注意到有几种模式趋向于产生高性能：
 + 特定位置说话人嵌入：对于模型架构中的每个使用地点，通过仿射投影和非线性变换嵌入到适当的维度和形式的共享说话人。
 + 循环初始化：初始化循环层隐藏状态与特定位置的说话人嵌入。
@@ -1095,7 +1095,7 @@ Deep Voice 2 语音模型基于一个 WaveNet 架构(《Wavenet: A generative mo
 
 ###### 4.1 多说话人 Deep Voice 2
 
-Deep Voice 2 的每个模型都有单独的扬声器嵌入。然而，它们可以被看作是一个更大的独立训练的说话人块嵌入。
+Deep Voice 2 的每个模型都有单独的speaker嵌入。然而，它们可以被看作是一个更大的独立训练的说话人块嵌入。
 
 <div align=center>
     <img src="zh-cn/img/ch3/04-1/p6.png" /> 
@@ -1139,7 +1139,7 @@ $$softsign=\frac{x}{1+|x|}$$
 
 ###### 4.2 多说话人 Tacotron
 
-除了通过扬声器嵌入扩展 Deep Voice 2 ，我们还扩展了 Tacotron (《Tacotron: Towards end-to-end speech synthesis》)，一种序列到序列的字符到波形模型。
+除了通过speaker嵌入扩展 Deep Voice 2 ，我们还扩展了 Tacotron (《Tacotron: Towards end-to-end speech synthesis》)，一种序列到序列的字符到波形模型。
 
 <div align=center>
     <img src="zh-cn/img/ch3/04-1/p9.png" /> 
@@ -1187,7 +1187,7 @@ Tacotron 字符—频谱图体系结构由一个 convolution-bank-highway-GRU ( 
 ###### 5.2 多说话人语音合成
 
 我们在 VCTK 数据集上用 44 小时的语音训练所有上述模型，该数据集包含 108 个说话人，每个人大约有 400 个语音。
-我们还在 audibooks 的内部数据集上训练所有模型，该数据集包含 477 个扬声器，每个说话人有 30 分钟的音频(总计 238 小时)。
+我们还在 audibooks 的内部数据集上训练所有模型，该数据集包含 477 个speaker，每个说话人有 30 分钟的音频(总计 238 小时)。
 从我们的模型中观察到的一致的样本质量表明，我们的架构可以很容易地学习数百种不同的声音，这些声音具有各种不同的口音和节奏。
 
 如下图所示，学习到的嵌入位于一个有意义的潜在空间中。
@@ -1219,7 +1219,7 @@ speaker discriminative 是一种卷积网络，训练它对说话人的话语进
 ##### 6.结论
 
 在这项工作中，我们探索如何通过低维可训练的说话人嵌入，将完全神经化的语音合成管道扩展到多说话人的文本到语音。
-我们首先介绍一种改进的单扬声器模型— Deep Voice 2 。
+我们首先介绍一种改进的单speaker模型— Deep Voice 2 。
 接下来，我们通过训练多说话人 Deep Voice 2 和多说话人 Tacotron 模型来演示我们技术的适用性，并通过 MOS 评估它们的质量。
 总之，我们使用说话人嵌入技术来创建高质量的文本–语音系统，并最终表明神经语音合成模型可以有效地从散布在数百个不同的说话人中的少量数据中学习。
        
@@ -1376,7 +1376,7 @@ $$h_{p} (i)= cos(w_{s}i/10000^{k/d})$$
 
 ##### 5.Conclusion
 
-我们介绍了Deep Voice 3，一个具有位置增强注意力机制的基于全卷积sequence-to-sequence声学模型的神经网络TTS系统。我们描述了sequence-to-sequence语音生成模型中常见的错误，然后表明了我们用Deep Voice 3成功的避免了这些错误。我们的模型不能直接生成声波，但可以适用于Griffin-Lim，WaveNet和WORLD做音频合成。我们还证明了我们的结构在多人会话语音合成中表现良好，通过增强讲话人的嵌入。最后，我们描述了Deep Voice 3生产系统的特点，包括文本规范化和特征表现，并通过广泛的MOS评价展示最先进的质量。未来的工作将涉及改进隐式学习的字形到音素模型，与神经声码器联合训练，以及对更干净和更大的数据集进行训练，以模拟人类声音和来自成千上万个扬声器的口音的完全可变性。
+我们介绍了Deep Voice 3，一个具有位置增强注意力机制的基于全卷积sequence-to-sequence声学模型的神经网络TTS系统。我们描述了sequence-to-sequence语音生成模型中常见的错误，然后表明了我们用Deep Voice 3成功的避免了这些错误。我们的模型不能直接生成声波，但可以适用于Griffin-Lim，WaveNet和WORLD做音频合成。我们还证明了我们的结构在多人会话语音合成中表现良好，通过增强讲话人的嵌入。最后，我们描述了Deep Voice 3生产系统的特点，包括文本规范化和特征表现，并通过广泛的MOS评价展示最先进的质量。未来的工作将涉及改进隐式学习的字形到音素模型，与神经声码器联合训练，以及对更干净和更大的数据集进行训练，以模拟人类声音和来自成千上万个speaker的口音的完全可变性。
 
 ##### 附录A: Deep Voice 3 的详细结构
 
@@ -2077,7 +2077,7 @@ FastSpeech 模型训练在 4 个 NVIDIA V100 GPU 上大约需要 80k 步。在�
 FastSpeech 采用了一种新颖的前馈网络并行生成梅尔谱图，该网络由几个关键部件组成，包括前馈 Transformer 模块、长度调节器和持续时间预测器。
 在 LJSpeech 数据集上的实验表明，我们提出的 FastSpeech 在语音质量上几乎可以匹配自回归 Transformer TTS 模型，将梅尔谱图的生成速度提高了 270 倍，将端到端语音合成速度提高了 38 倍，几乎消除了跳词和重复的问题。可以平滑调节语音速度(`0.5x` `1.5x`)。
        
-在未来的工作中，我们将继续提高合成语音的质量，并将 FastSpeech 应用于多扬声器和低资源设置。我们还将联合训练 FastSpeech 与并行神经声码器，使其完全端到端的并行。
+在未来的工作中，我们将继续提高合成语音的质量，并将 FastSpeech 应用于多speakers和低资源设置。我们还将联合训练 FastSpeech 与并行神经声码器，使其完全端到端的并行。
 
 ------
 
@@ -2370,7 +2370,7 @@ ground truth的音高的获取方法，是使用：acoustic periodicity detectio
 ------
 <!-- # Flow -->
 
-### 11. OverFlow
+### 11. OverFlow:Putting flows on top of neural transducers for better TTS
 
 !> https://arxiv.org/abs/2211.06892
 
@@ -2455,7 +2455,7 @@ Glow TTS在耦合层中使用CNN，由此产生的可逆神经网络具有有限
 
 #### 4.Experiments
 
-对于OverFlow,我们添加了Glow-TTS中的invertible network,最终网络的大小和Tactron2(T2)，Glow-TTS（GTTS)相似。
+对于OverFlow,我们添加了Glow-TTS中的invertible network,最终网络的大小和Tactron2(T2)，Glow-TTS（GTTS)相似。Vocoder使用预训练的HiFi-GAN。
 
 <div align=center>
     <img src="zh-cn/img/ch3/11/p3.png" /> 
@@ -2475,12 +2475,143 @@ Glow TTS在耦合层中使用CNN，由此产生的可逆神经网络具有有限
 
 ------
 
-### 12. SC-GlowTTS
+### 12. SC-GlowTTS:an Efficient Zero-Shot Multi-Speaker Text-To-Speech Model
 
 !> https://arxiv.org/abs/2104.05557
 
+!> https://edresson:github:io/SC-GlowTTS/
+
+!> https://github:com/coqui-ai/TTS
+
+!> https://github:com/Edresson/SC-GlowTTS
+
 <!-- https://blog.csdn.net/zzfive/article/details/127580200 -->
 
+#### 摘要
+
+本文提出了 SC-GlowTTS：一种有效的零样本多说话者文本到语音模型，可提高训练中未见说话者的相似度；提出了一种speaker conditional架构，探索了一种基于流的解码器，它可以在zeor-shot场景下工作。作为文本编码器，探索了基于膨胀残差卷积的编码器、基于门控卷积的编码器和基于Transformer的编码器。此外，已经证明，为训练数据集上的 TTS 模型预测的频谱图调整基于 GAN 的声码器可以显著提高新说话者的相似度和语音质量。提出的模型能够在训练中收敛，仅使用 11 个说话者，在与新说话者的相似性以及高语音质量方面达到最先进的结果。
+
+#### 1.简介
+
+由于深度学习的巨大进步，文本到语音（TTS）系统近年来受到了很多关注，这使得虚拟助手等语音应用程序的普及成为可能。大多数 TTS 系统都是根据单个说话者的声音定制的，**但目前人们对合成新说话者的声音很感兴趣，这在训练期间没有见过，只使用几秒钟的语音样本。这种方法称为零样本 TTS (ZS-TTS)**。
+
+ZS-TTS最初是通过扩展DeepVoice 3提出的。此外使用广义端到端损失 (GE2E)（《Generalized
+end-to-end loss for speaker verification》）从经过训练的speaker编码器中提取的外部嵌入探索了Tacotron 2，从而产生了一个可以生成语音的模型，类似于目标speaker。类似地，Zero-Shot Multi-Speaker Text-To-Speech with State-Of-The-Art Neural Speaker Embeddings研究了使用不同speakers嵌入方法的Tacotron 2。作者表明，与X-vector（《X-vectors: Robust dnn embeddings for speaker recognition》）嵌入相比，LDE（《“Exploring the encoding layer and loss function in end-to-end speaker and language recognition system》）嵌入提高了新说话者的相似度，合成了更自然的语音；作者还表明，训练性别依赖模型可以提高看不见的说话者的相似性。
+
+在这种情况下，一个主要问题是在模型训练中观察到的说话者和未观察到的说话者之间的相似度差距。为了缩小这一差距，Attentron提出了一种细粒度编码器，该编码器具有从各种参考样本中提取详细风格的注意机制，以及一种粗粒度编码器。由于使用了几个参考样本而不是一个，他们对看不见的说话者获得了更好的相似度。
+
+尽管有了最近的研究结果，zero-shot TTS仍然是一个开放的问题，特别是关于可见和不可见speaker质量的差异。此外，目前的方法严重依赖于Tacotron 2，而使用基于流程的方法有可能改善结果。在这种情况下，Flowtron允许对语音的多个方面进行操作，如音调、语速、抑扬顿挫和重音。此外，Glow-TTS达到与Tacotron 2相似的质量，但速度提高了15.7倍，同时允许语音速度操作。
+
+本文提出了一种新的方法——Speaker Conditional GlowTTS (SC-GlowTTS)，用于对看不见的speaker进行zero-shot学习。提出的模型依赖于Glow-TTS来实现将输入字符转换为谱图的部分。SC-GlowTTS使用一个基于Angular Prototypical loss的外部speaker编码器来学习speaker嵌入向量，并适应HiFi-GAN声编码器将输出的谱图转换为波形。这项工作中主要贡献有:
+
++ 一种新颖的zero-shot TTS方法，仅在训练集中使用11个speakers就能达到最先进的效果
++ 一种在zero-shot TTS设置下实现高质量和更快的实时语音合成的架构
++ 针对训练数据集上TTS模型预测的谱图调整基于Gan的声码器，以显著提高新speaker的相似度和语音质量
+
+每个实验的音频样本都可以在<https://edresson:github:io/SC-GlowTTS/>上找到。此外，为了再现性，该实现可在[Coqui TTS](https://github:com/coqui-ai/TTS)中获得，所有实验的检查点可在[Github repository](https://github:com/Edresson/SC-GlowTTS)中获得。
+
+#### 2.Speaker Conditional GlowTTS Model
+
+SC-GlowTTS建立在GlowTTS的基础上，但包括一些新的修改。除了GlowTTS的基于Transformer的编码器网络，还探索了残差膨胀卷积网络和门控卷积网络；当时应该是所知的第一次在这种情况下使用。卷积残差编码器基于SpeedySpeech: Efficient Neural Speech Synthesis，使用Mish代替ReLU激活函数。另一方面，门控卷积网络由9个卷积块组成，每个卷积块包括一个dropout层、一个一维卷积和一个层归一化。在所有卷积层中使用核大小为5、膨胀率为1和192个通道。基于流的解码器使用与GlowTTS模型相同的体系结构和配置。 然而，为了将其转换为zero-shot TTS模型，在所有12个解码器块的仿射耦合层中加入speaker嵌入。使用FastSpeech的持续时间预测网络来预测字符持续时间。为了捕捉不同speaker的不同语音特征，将speaker嵌入到时长预测器的输入中。最后，使用HiFi-GAN作为声码器。
+
+在推理过程中，SC-GlowTTS模型如上图所示，其中`(++)`表示连接。在训练过程中，模型使用单调对齐搜索`(MAS)`，其中解码器的目标是调整mel谱图和嵌入$P_Z$
+ 先验分布的输入speaker的嵌入向量。MAS的目的是将先验分布$P_Z$
+ 与编码器的输出对齐。在推理过程中，不使用 MAS，而是由文本编码器和持续时间预测器网络预测先验分布$P_Z$和对齐。最后，从先验分布$P_Z$中采样一个潜在变量$Z$。使用反向解码器和speaker嵌入，通过基于流的解码器转换潜在变量$Z$，并行合成梅尔谱图。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/12/p1.png" /> 
+</div>
+
+为了简单起见，将带有Transformer、残差卷积和门控卷积的编码器的SC-GlowTTS模型分别命名为SC-GlowTTS-Trans、SC-GlowTTS-Res和SC-GlowTTS-Gated模型。
+
+#### 3.实验
+
+##### 3.1 Speaker Encoder
+
+Speaker Encoder由3个LSTM层和一个线性输出层组成，类似于《Generalized End-to-End Loss for Speaker Verification》。LSTM层单元数768， 通过线性层映射至256。为了进行训练，使用了在16khz采样的音频，并使用快速傅立叶变换(FFT)在1024ms窗口提取梅尔谱图，跳跃长度为256和1024个FFT组件，从中只保留80个梅尔系数。使用不同于原始工作的 `Angular Prototypical`损失函数进行优化。优化器 RAdam在320k步中使用，每批使用 64 个speaker，每个speaker有10个样本，学习率为$10^{−4}$。
+
+##### 3.2 Zero-Shot Multi-Speaker Tacotron 2
+
+将本文的方法与Tacotron 2进行比较；基于之前的一些工作，本文使用local sensitive attention，将speaker嵌入连接到注意力模块的输入，因为这对于与性别无关的Tacotron模型是足够的。为了缓解注意力模块中可能出现的问题，使用双解码器一致性（DDC），逐步训练和引导注意力。在Tacotron中，每次解码器迭代的输出帧数称为缩减率 $R$。DDC的想法是结合两个具有不同缩减因子的解码器。一个解码器（粗略）使用较高的 $R$值，而另一个解码器（精细）使用较小的 $R$ 值。渐进式训练只是以较大的 $R$开始训练，并在训练期间减小它。在实验中，将 `R = 7` 用于粗解码器，而对于精细解码器，使用渐进训练，从 `R = 7` 开始并按如下方式减小：`R = 5 `在步骤 10k； `R = 3` 在步骤 25k； `R = 2` 在步骤 70k。
+
+##### 3.3 音频数据集
+
+Speaker Encoder使用LibriSpeech数据集、Common Voice的英文版、VCTK和VoxCeleb (v1和v2)数据集的所有部分进行训练，总共约有25k个speakers；忽略训练样本少于10个的speaker的数据。
+
+本文的zero-shot TTS模型使用VCTK数据集进行训练，该数据集包含44小时的音频和109位speakers，采样频率为48KHz。每个speaker大约有400句话。为了消除长时间的沉默，进行了预处理。使用Webrtc vad工具包应用了语音静音检测(VAD)。将VCTK数据集分为:训练、验证(包含与训练集相同的演讲者)和测试。对于测试集，选择了11名不在验证集或训练集中的演讲者;根据《Transfer Learning from Speaker Verification to Multispeaker Text-To-Speech Synthesis》的建议，从每个口音中选择了1名代表，总共7名女性和4名男性(演讲者225、234、238、245、248、261、294、302、326、335和347)。对于HiFi-GAN声码器的初始训练，使用Libri TTS数据集的train-clean-100和train-clean-360。
+
+##### 3.4 实验设置
+
+进行了四项训练实验:
+
++ 实验一：上文描述的Tacotron zeor-shot模型，训练210k步
++ 实验二：SC-GlowTTS-Trans 训练150k步
++ 实验三：SC-GlowTTS-Res 训练150k步
++ 实验四：SC-GlowTTS-Gated 训练150k步
+
+在所有实验中，使用批次大小为128的RAdam，初始学习率为$10^{-3}1$，Noam的学习率schedule，warmup步为4000。此外，使用与前文相同的配置从Speaker Encoder中提取mel谱图，但采样率为22khz。使用VCTK数据集，并使用验证集为每个比较损失值的实验选择最佳检查点。
+
+此外，在所有的实验中，都选择使用音素而不是文本作为输入。具体来说，使用Phonemizer:<https://github:com/bootphon/phonemizer/>工具，它支持多种语言。此外，在基于GlowTTS模型的输入句子的每个音素之间添加了一个空白标记，这是根据原始工作的建议。
+
+由于其有效的速度/质量权衡，`HiFi-GAN v2`模型被用作声码器。作为起点，使用作者提供用LJ Speech数据集训练了500k步的模型。首先用LibriTTS数据集训练HiFi-GAN模型的75k步长。之后，使用VCTK数据集，使用训练和验证集，调整模型以适应其他190k步骤。
+
+HiFi-GAN作者证明了在单个speaker场景中使用 TTS 模型的频谱图调整HiFi-GAN模型可以提高质量。然而，其对于以下几点是否能改善仍未可知：1）多speakers下的质量；2）zero-shot TTS场景下未见过的speaker的语音相似性。为了回答这个问题，本文的TTS模型综合了VCTK数据集的训练和验证分割中的每个句子；使用teacher forcing保持预测的谱图帧和输入音素之间的对齐。对于SC-GlowTTS，使用MAS将解码器输出与编码器输出对齐。使用从每个模型提取的这些频谱图，对最初使用LibriTTS数据集训练的检查点进行了微调，再进行190k步，生成了微调后的HiFi-GAN (HiFi-GAN-FT)。
+
+#### 4.结果与讨论
+
+本文采用平均意见评分(MOS)研究对合成语音质量进行评价。MOS评分通过严格的众包获得。为了MOS计算，每个音频从68个独特贡献者(35F/33M)中邀请了15个专业合作者(都来自专业的美国英语母语人群)。为了比较合成声音与原始speaker之间的相似度，计算了Speaker Encoder Cosine Similarity(SECS)。SECS包括计算从Speaker Encoder中提取的两个音频嵌入之间的余弦相似度。取值范围为-1 ~ 1，数值越大表示相似性越强。使用reliblyzer（《“Generalized
+end-to-end loss for speaker verification》，《Master thesis: Real-time voice cloning》）包中的Speaker Encoder计算SECS;因此，可以与那些研究进行比较。因为SECS值与MOS相似度测试(Sim-MOS)兼容，所以选择只给出SECS来比较实验中生成的语音相似度。
+
+还通过计算CPU和GPU上的实时因子(RTF)来比较每个模型的运行时间。对于速度测试，使用了一台带有NVIDIA GeForce GTX Titan V GPU的机器，一个Intel ® Xeon ® CPU E5-2603 v4 @ 1.70GHz处理器，6个CPU核和15 Gb RAM。训练是在NVIDIA V100 GPU上进行的。此外，RTF的计算考虑了从输入音素到输出波形的完整合成运行。为 VCTK 测试集的 11 个说话者中的每一个合成 15 个不同的句子，共10 次，并计算平均值。
+
+作为提取speaker嵌入的参考样本，使用 VCTK 的第五句（即，speakerID 005.txt），因为所有测试speaker都说出了它，并且因为它是一个长句子（20 个单词）。这样，在zero-shot TTS 模型中，所有speaker都由具有相同字数和语音内容的参考样本呈现。
+
+对于MOS和SEC 的计算，从LibriTTS的 test-clean子集中随机抽取 55 个句子，只考虑超过 20 个单词的句子。为 1个测试说话者中的每一个随机选择5个句子，确保所有55个测试句子都被合成并且所有测试说话者都被考虑在内。作为Ground Truth，为 11 个测试speakers（总共55个）中的每一个随机选择5个音频，只研究超过20个单词的音频。
+
+另一方面，对于SECS的Ground Truth，将随机选择的55个音频（如上所述）与用于合成句子的参考音频（每个测试说话者的 VCTK 数据集的第五句）进行了比较。
+
+小标显示了所有实验的CPU和GPU中的 RTF、具有 95% 置信区间的MOS和SECS。速度测试表明，CPU和GPU上最快的模型是SC-GlowTTS-Gated，其次是SC-GlowTTS-Res模型。SC-GlowTTS-Trans模型是SC-GlowTTS系列中最慢的，但仍然比Tacotron 2快得多。尽管如此，通过与HiFi-GAN 声码器的集成，所有模型在CPU和GPU中都是实时的。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/12/p2.png" /> 
+</div>
+
+Ground Truth的SECS得分达到0.9222，因为它将用作参考的样本与同一说话者的其他真实语音样本进行了比较。该值旨在显示SECS的上限，即完美“复制”目标说话者声音的模型。
+
+使用HiFi-GAN声码器（没有微调）进行合成的最佳SECS是通过SC-GlowTTS-Trans 模型（实验 2）获得的，其次是Tacotron 2（实验 1）。SC-GlowTTS-Res模型（实验 3）获得了第三好的SECS，仅优于SC-GlowTTS-Gated（实验 2）。使用HiFi-GAN-FT，SC-GlowTTS-Trans模型也获得了最好的SECS，其次是SC-GlowTTS-Res模型。 SC-GlowTTS-Gated模型达到了第三好的 SECS，仅优于 Tacotron 2模型。此外，发现从TTS模型中提取的频谱图中对HiFi-GAN声码器的微调显着提高了新speaker的SECS。Tacotron 2、SC-GlowTTS-Trans、SC-GlowTTS-Res 和 SC-GlowTTS-Gated模型的SECS分别从0.7589增加到0.7791、0.7641到0.8046、0.7440到0.7969 和 0.7432到0.7849。
+
+最后，将实验结果与Attentron（《“Attentron: Few-shot textto-
+speech utilizing attention-based variable-length embeddi》）模型提出的结果进行比较。Attentron作者公布了 SECS 值，该值也是与本文使用一样的的speaker编码器计算得出的；尽管其仅使用 8 位speaker（4 位女性和 4 位男性）进行测试，而本文使用了 11 位说话者，但本文认为比较是公平的，并且没有未定义的选择标准。zero-shot模式下的Attentron模型的SECS仅为 0.731。而不使用一个参考样本，而是使用8个参考样本的模型，使用多个样本来合成语音，执行few-shot TTS，这种方法实现了0.788 的 ECS，略低于本文最好的SECS，0.8046。尽管fow-shot方法具有优势，但本文的模型仍然比Attentron实现了更高的SECS。
+
+除了本文使用更多的speakers之外，在Attentron中，来自VCT 数据集的句子被合成，因为这个数据集有一些不同说话者所说的句子，这有助于模型，因为在训练期间可能已经看到了一些句子，而本文所有工作中用来计算指标的句子在训练期间没有出现。
+
+对于MOS，ground truth语音达到4.12。带有HiFi-GAN-FT声码器的SC-GlowTTS-Gated模型最接近它，达到3.82的MOS。此外，在SECS中，HiFi-GAN-FT声码器提高了语音相似度，使用相同的声码器实现了最佳 MOS。对TTS模型提取的谱图进行HiFi-GAN声码器的调整后，所有模型Tacotron 2、SC-GlowTTS-Trans、SC-GlowTTS-Res 和 SC-GlowTTS-Gated对新speaker的MOS分别从3.57增加到3.74、3.65增加到3.78、3.45增加到3.70、3.55增加到3.82。本文的MOS值与其他最先进的ZS-TTS模型相当。
+
+#### 5.SC-GlowTTS在few-speakers场景中的性能
+
+为了模拟speakers很少的场景，通过选择VCTK数据集训练集的一个子集来反映测试集。这个新训练集由11名speakers组成，7名女性和4名男性。为每个口音选择了一个代表，除了“新西兰”口音只有一个speakers，它在本文的测试集中，故增加了一个“美国”speaker，选择的speakers是229,249,293,313,301,374,304,316,251,297和323。从这个新的训练集中，选择了样本作为验证集。
+
+使用SC-GlowTTS-Trans模型，并使用LJSpeech数据集进行290k步的训练。这种单speaker数据集的预训练被用于在更大的词汇表中启动模型编码器。在新的训练集中对SC-GlowTTS-Trans模型进行了优化，该训练集中只有11个speakers，步数为70k，使用验证集，最终选择了最佳检查点作为步数66k。此外，使用在LibriTTS数据集中训练的75k步的HiFiGAN模型，使用相同的技术对其他95k步进行了调整。该新实验的SECS为0.7707，MOS为3.71±0.07。这些结果与Tacotron 2所获得的0.7791的SECS和3.74的MOS相兼容，后者使用了更大的98个speakers。因此，本文的SC-GlowTTS-Trans模型收敛的数据集比Tacotron 2小9.8倍，性能与Tacotron 2相当。相信这是向前迈出的重要一步，特别是对于低资源语言的ZS-TTS。
+
+#### 6.Zero-Shot声音转换
+
+正如在原始的GlowTTS模型中一样，不向模型编码器提供任何关于说话人身份的信息，因此编码器预测的分布被迫独立于说话人身份。因此，像GlowTTS一样，SC-GlowTTS只能使用模型的解码器转换声音。然而，在本工作中，用外部speaker嵌入SC-GlowTTS。它使本文的模型通过执行zero-shot语音转换来类似于训练中没有看到的说话人的声音。zero-shot语音转换的示例出现在<https://edresson.github.io/SC-GlowTTS/>。
+
+
+#### 7.结论与后续工作
+
+本工作提出了一种新的方法，SC-Glow-TTS，实现了最先进的ZS-TTS结果。为SC-GlowTTS模型探索了3种不同的编码器，并表明基于Transformer的编码器为训练中未见过的说话者提供了最佳的相似性。SC-GlowTTS模型优于Tacotron 2。此外，当与外部speaker编码器相结合时，SC-GlowTTS模型可以在训练集中仅使用11个speaker时执行ZS-TTS。最后，本工作发现，调整训练和验证集中TTS模型预测的谱图中的HiFi-GAN声码，可以显著提高训练中未出现的说话人合成语音(MOS)的相似度和质量。
+
+未来的工作可能会改进该模型，使其能够对诸如音调、语调、语速、抑扬顿挫和重音等语音方面进行操作。此外，Attentron表明，针对speaker表示的几个参考样本提高了训练中未见过的speaker的相似度，后续打算将SC-GlowTTS扩展为一种few-shot方法。
+
+
+
+
+
+
+
+
+------
 
 ### 13. RAD-TTS
 

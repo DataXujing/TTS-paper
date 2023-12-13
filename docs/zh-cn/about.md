@@ -32,7 +32,7 @@
 |2023-12-10           |  FastSpeech 2/2s  |
 |2023-12-11           |  FastPitch  |
 |2023-12-13           |  OverFlow  |
-
+|2023-12-13           |   SC-GlowTTS |
 
 
 

@@ -1,6 +1,6 @@
 ## End-to-End Models
 
-### 1. VITS
+### 1. VITS / VITS2
 
 
 ### 2. Char2Wav
