@@ -2374,10 +2374,112 @@ ground truth的音高的获取方法，是使用：acoustic periodicity detectio
 
 !> https://arxiv.org/abs/2211.06892
 
+!> https://shivammehta25.github.io/OverFlow/
+
+!> https://github.com/shivammehta25/OverFlow
+
+#### Abstract
+
+最近Neural HMM类型neural transducer被用在了seq2seq的TTS系统中。这种方式将传统的统计方法与现在的神经网络TTS方法相结合，减少了神经网络TTS胡言乱语输出。这篇paper中我们结将Neural HMM与归一化的流（normalising flows)结合起来描述语音声学的高度非高斯分布。结果表明这是一个强大的对duration和acoustic进行全概率建模的方法，训练基于最大似然估计。实验结果表明我们的系统仅需要较少的迭代次数就可以产生高质量的语音。
+
+#### 1.Introduction
+
+最近证实用所谓的neural HMM（《Unsupervised
+neural hidden Markov models》）替代传统的attention可以提升seq2seq TTS，这是一种neural transducer. 模型包含了经典的HMM-based TTS和现代的seq2seq模型。模型是全概率的可最大化似然函数训练，从左到右的HMM保证每个音素发音的正确性，这个性质被称为单调性。这直接解决了很多attention-based TTS因非单调的attention合成音频导致的胡言乱语和同时需要更多数据和迭代次数才能收敛的缺点。这种自回归的合成模型并行性差，适合流式的合成应用。
+
+然而，基于neural HMM的TTS框架尚未充分发挥其潜力。特别是状态条件的发射分布被限制为Gaussian或Laplace,这导致了建模人类语音变得薄弱，因为自然语音信号遵循复杂的概率分布。
+
+我们设计了OverFlow,增加了归一化的流（normalising flows)在neural HMM的顶端用来更好的描述语音中的non-Gaussian。提供了全概率的方式建模声学模型和duration,这不同于绝大多数其他的基于flow的模型，使用自回归获取长时记忆的能力。实验表明我们的方法可以快速的学习发音的准确性和合成高质量的语音，比相似的框架比如Tacotron2和Glow-TTS表现要好。合成demo和代码参考：<https://shivammehta25.github.io/OverFlow/>
+
+#### 2. Prior work
+
+##### 2.1 TTS with transducers and neural HMMs
+
+Neural HMM是一种自回归的HMM,其中状态条件发射分布和转移概率由神经网络定义。这使其比classical HMM更强。最简单的版本是从左向右的no-skip的HMM模拟了单调对齐。这些模型本质依然是HMM,因此可以使用前向传播或Viterbi算法来高效的计算对数似然，使用随机梯度下降优化模型。这使得这些方法称为自回归TTS的一个令人信服的选择。
+
+数学上，，neural HMM是一种neural transducer.Neural transducer被成功应用在ASR中，第一次应用在TTS中是SSNT-TTS（《Initial investigation of
+encoder-decoder end-to-end TTS using marginalization of monotonic
+hard alignments》）模型。近期也有人使用单一模型实现ASR和TTS两个任务。我们的模型和这些模型不同是概率模型。最重要的是，我们集成了normalising flow到这类模型中，以获得一个强大的概率框架，能够描述语音声学的行为。
+
+##### 2.2 Normalising flows in TTS acoustic modelling
+
+Normalising flows使用深度学习定义高灵敏度的概率分布参数。通过基于神经网络对齐进行一系列非线性可逆变换从一个简单的Gaussian分布穿件一个复杂的分布，可逆性是指变量的变化公式可以用来计算并最大化所得到的的模型的可能性。
+
+Flows在语音中应用广泛，第一个TTS使flow的声学模型是Flowtron和Flow-TTS.随后是Glow-TTS和RAD-TTS以及EfficientTTS.Flowtron是Tacotron2的一个扩展支持多说华人和global style tokens,将normalising flow嵌入到自回归decoder生成下一个输出帧。和Tacotron2相同，使用attention来学习对齐。Flow-TTS是一个非自回归的架构，依赖于外部的对齐进行训练。Glow-TTS是Flow-TTS的改进同时进行语音学习和对齐的学习，消除了额外的对齐工具。训练过程中它同时使用一种基于Vitervi的动态编程过程从HMM中增强单调对齐。RAD-TTS为持续时间建模集成了一个单独的归一化流，以及一个更精细的对齐机制，但是没有达到Glow-TTS相同的语音质量。EfficientTTS最终描述了两个高效的机制使用传统的dot-product attention用来增强单调对齐，从而提高主观得分。仅仅Flowtron是全概率的模型。
+
+除了Flowtron其他flow-based TTS声学模型都是非自回归的（即并行的），这些有利于GPU服务的部署。然而，自回归架构在概率建模上准确性方面往往比非自回归的架构具有优势。融合flows和非自回归HMM的模型在音素识别上取得了SOTA的结果。这些促使着我们融合flows和基于HMM的自回归模型，因为两者均预训使用最大似然估计进行训练并得到强的概率建模结果。
+
+Flowtron使用传统的attention不能增强对齐的单调性，导致合成时有可能胡言乱语，并很难训练。该模型并没有仅在LJ Speech数据集上进行训练，这样进行和其他模型的比较就是不公平的。Glow-TTS增强了单调性对齐使用了一个从HMM中抽离出来的算法，如同我们的模型一样。我们调整了decider和Glow-TTS进行比较。与我们的区别是Glow-TTS没有使用自回归。
+
+Flows已经在端到端的TTS中使用，比如VITS,增加了一个flow-based duration model和一个Glow-TTS上的vocoder,使用复合损失进行训练。这种方式很强，但是训练很慢。
+
+##### 2.3 Flows as an invertible(可逆的) post-net
+
+为了增强输出质量，自回归的模型一般会使用一个非因果卷积构成的post-net对输出进行后处理。但是遗憾的是，这种post-net架构对基于neural HMM的应极大似然估计训练是不合适的，但是缺失了post-ney对语音合成的质量是负面影响的。用invertible post-net(将模型转化为归一化的流)替代，这样可以使用post-net同时保持整个模型被序列的似然估计进行优化。我们的实验decoder来自于Glow-TTS,它利用了一种基于非因果CNN的架构，与基于注意力的神经TTS中的post-net相似。
+
+作为post-net的替代方案，可以改为微调声码器以从未增强的声学特征产生更自然的波形。然而，这需要额外的训练阶段，并且神经声码器的训练通常是缓慢的。
+
+#### 3.Method
+
+<div align=center>
+    <img src="zh-cn/img/ch3/11/p1.png" /> 
+</div>
+
+OverFlow,如上图所示，简而言之，我们使用了invertible neural network在neural HMM的output,显著增强了模型输出的率分布表示。section4中的实验验证了我们的想法，剩下的部分我们将介绍两种方法--neural HMM和normalising flows共同构成了我们的模型。
+
+Neural HMM是一种概率的encoder-decoder seq2seq的模型，可以用来代替attention对齐input和output。TTS的声学模型中neural HMM encoder将input vector(e.g.音素embedding)编码成一个序列的向量$h_{1:N}$其中N是状态数的left-to-right no-skip的HMM.每个input都被转换为固定数量的vector，比如每个音素2个状态。neural HMM的decoder有两个输入和两个输出，可以写为：
+$$(\theta_t,\tau_t)=Dec(h_n,x_{1:t-1})$$
+
+input是定义的状态向量$h_{s_t}$来自于encoder,与HMM的状态有关$s_t \in \\{1,...,N\\}$在$t$时刻。以及前面output的声学帧$x_{1:t-1}$.这是自回归的模型。现实中，往往只input前一帧$x_{t-1}$,然后用一个pre-net去处理该帧，然后用LSTM保证前$t-1$帧的信息也被融入进来。
+
+output有两个一个是$\theta_t$(输出分布(emission distribution)的参数)和转移概率（transition probability) $\tau_t \in [0,1]$.参数$\theta_t$定义了下一个输出为$x_t$的概率分布。大多数的neural HMM都假设$x_t$服从多元高斯分布，协方差是对角阵。该情况下$\theta_t=(\mu_t,\sigma_t)$为两个向量表示$x_t$的均值和标准差。同时$\tau_t$定义了HMM从当前状态转移到下一个状态的概率，即$s_{t+1}=s_t+1$或$s_{t+1}=s_t$.合成的过程开始于$s_1=1$结束于$s_t=N+1$.为了满足马尔可夫假设，HMM的decoder output不依赖于$h_{t-1}$中的之前时间信息，这意味着，模型可以用最大似然函数进行训练。用前向的Viterbi算法计算。关于Neural HMM TTS架构可以参考上图。
+
+Neural HMM描述了离散时间序列的分布，一般假设每个时间帧为高斯分布。Normalising flows(《Normalizing flows for probabilistic modeling and inference》,《Normalizing flows: An introduction and review of current methods》)提供了一种将隐含变量或源分布(latent or source distributions)$Z$（e.g.Gaussian)转换为灵活的目标分布(flexible target distributions)$X$的方法。其原理是：使用invertible nonlinear distributions $f$,得到target distribution,
+$$X=f(Z;W)$$
+其中$W$是神经网络$f$的参数。可逆性使我们能够使用变量变化公式计算任何观测结果$x$的（对数）概率。
+$$lnp_{X}(x)=lnp_{Z}(f^{-1}(x;W))+ln|detJ_{F^{-1}}(x;W)|$$
+其中$J_{f^{-1}}(x;W)$是$f^{-1}$的Jacobian matrix。即使$f$是一个相对较弱的非线性变换，我们也可以通过将几个分量变换$f_l$链接在一起来获得高度灵活的分布。这些复合变换被称为invertible neural network。重要的是，neural HMM和normalising flows都需要精确的计算最大似然函数，使得它们非常适合语音声学的强概率模型。
+
+Glows(《Glow: Generative flow with invertible 1x1 convolutions》)是一个著名的normalising-flow架构。它将学习的全局仿射变换与所谓的耦合层交织，对输入向量$z_l \in R^D$的一半元素进行非线性变换,相对于剩余元素（保持不变）的值。调用第$l$个耦合层的输出$z^{′}_ l$，该层是按元素执行
+可逆仿射变换，可写为：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/11/p2.png" width=40%/> 
+</div>
+
+这里的$\alpha_l>0$,$\beta_l$是一个神经网络的输出，神经网络的参数是$W$。比较容易的可以验证这个变换是可逆的，因为$\alpha_l$和$\beta_l$可以通过feed $z^{'}_ {1:D/2}}$在神经网路中被计算出来。矩阵乘法（又名“1x1的卷积”）在仿射变换中可以看作是permutation operation的推广，确保所有输入元素通过流接收多个非线性变换。
+
+大部分的TTS中的normalising flows的使用都基于Glow，Glow-TTS引入了全局仿射变换的更具参数效率的变体。由于Glow和
+Glow TTS在耦合层中使用CNN，由此产生的可逆神经网络具有有限的感受野。因此它不能捕获声学之间的全局依赖性，
+这可能解释了许多经过训练的Glow TTS系统产生的独特的话语水平语调和强调模式。在我们的模型中source distribution $Z_t$依赖于所有之前的$Z_{1:t-1}$,通过neural HMM中的自回归（以及具有长期记忆的LSTM），可能产生更具全局一致性的合成语音。
+
+#### 4.Experiments
+
+对于OverFlow,我们添加了Glow-TTS中的invertible network,最终网络的大小和Tactron2(T2)，Glow-TTS（GTTS)相似。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/11/p3.png" /> 
+</div>
+
+上图是用语音识别模型Whisper,测试的各个TTS系统训练不同次数在验证集上生成的语音后ASR的WER，这里的T2:Tacotron2,GTTS:Glow-TTS,NHMM:neural HMM,OF:OverFlow(pre-net dropout 0.5,sampleing temperature:0.667),VOC:vocoded speech ,VITS:VITS,FP:FastPitch v1.1。我们可以看到OverFlow TTS的语音质量最高。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/11/p4.png" /> 
+</div>
+
+上图是不同模型的MOS和模型大小以及在训练了100K之后的Whisper在验证集上的WER的结果汇总。这里的OFND:OverFlow (pre-net 0 dropout),OFZT:OverFlow (0,sampling temperature),可以看到我们的模型在模型到小，语音合成质量上是有竞争力的。
+
+#### 5.结论
+
+我们描述了如何在neural HMM架构中结合normalising flows(通过invertible post-net)定义了一个强大的该类别模型对durations和acoustics进行建模。构建了一个neural transfucer 包含normalising flows.我们的模型学习发音更准确，或得了更强的主观自然度评级。未来的工作我们将尝试更强的模型比如Transformer，多说话人合成，在更具有挑战性的数据集上比如自然口语上进行应用。
+
+------
 
 ### 12. SC-GlowTTS
 
 !> https://arxiv.org/abs/2104.05557
+
+<!-- https://blog.csdn.net/zzfive/article/details/127580200 -->
 
 
 ### 13. RAD-TTS
