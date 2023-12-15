@@ -2730,7 +2730,7 @@ $$log|detJ(f^{-1}_ {conv}(x))|=log|det W|$$
 令$A_{soft} \in R^{N\times T}$表示文本$\Phi$和mel-frame $X$的对齐矩阵，这里的$A_{soft}$矩阵的每列是归一化的概率分布。采样的对齐矩阵的可视化如图2所示。我们的最终目的是得到一个单调的二值的对齐矩阵$A_{hard}$.使得对于每一帧，概率质量集中在单个符号上,$\sum^{T}_ {j=1}A_{hard,i,j}$生成每个音素的duration。
 
 **Extracting $A_{soft}$**: 与Glow TTS类似，软对齐分布基于所学习的所有文本$\phi \in \Phi$和mel帧$x\in X$之间的成对关系，在text的维度上做softmax:
-$$D_{i,j}=dist_{L_2}(\phi_^{enc}_ i,x^{enc}_ j)$$
+$$D_{i,j}=dist_{L_2}(\phi^{enc}_ i,x^{enc}_ j)$$
 $$A_{soft}=softmax(-D,dim=0)$$
 
 这里的$x^{enc},\phi^{enc}$表示$x$和$\phi$的编码，使用2-3层的1D CNN。我们发现简单的感受野小的变换能产生好的结果，相反，复杂的网络感受野大反而很差。
@@ -2738,7 +2738,7 @@ $$A_{soft}=softmax(-D,dim=0)$$
 给定观测值使用前向-后弦算法最大化隐藏状态的似然估计。我们仅关注前向的概率。text被定义为隐藏状态，mel-frame被定义为观测值，最大化$P(S(\Phi)|X)$,考虑所有的单调对齐序列$s\in S(\Phi)$,比如其中一个对齐：$s:\\{s_1=\phi_1,s_2=\phi_2,...,s_T=\phi_N\\}$. 一个**单调的对齐序列**$s\in S$必须满足： 1.开始于第一个文本，结束于最后一个文本；2.每一个text token $\phi_n$必须至少出现1次；3.每次推进mel-frame，序列可以前进0或1个文本token.
 
 所有有效的单调对齐对应的似然函数为：
-$$P(S(\Phi)|X)=\sun_{s\in S(\phi)}\prod^{T}_ {t=1}P(s_t|x_t)$$
+$$P(S(\Phi)|X)=\sum_{s\in S(\phi)}\prod^{T}_ {t=1}P(s_t|x_t)$$
 可以使用CTC损失进行快速的实现。
 
 **Beta-Binomial Alignment Prior**： 我们使用雪茄形对角先验加速对齐学习，他促使元素集中在对角线上，可以表示为一个Beta-Binomial distribution。虽然表述不同，但它在概念上类似于《Efficiently
@@ -2763,7 +2763,7 @@ speech synthesis》
 
 Our model uses a training schedule to account for the evolving
 reliability of extracted alignments. Let $L_{align}$ be the
-minimization of the log likelihood of (8). $L_{mel} and $L_{dur}$
+minimization of the log likelihood of (8). $L_{mel}$ and $L_{dur}$
 minimize (3) with respect to the decoder flow and phoneme
 flow respectively. The training begins with the loss function
 $L = L_{mel} + \lambda_1 L_{align}$, with the corresponding changes
