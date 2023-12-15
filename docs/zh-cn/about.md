@@ -33,7 +33,7 @@
 |2023-12-11           |  FastPitch  |
 |2023-12-13           |  OverFlow  |
 |2023-12-13           |   SC-GlowTTS |
-
+|2023-12-15           |   RAD-TTS |
 
 
 

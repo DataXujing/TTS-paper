@@ -1,5 +1,34 @@
 ## Text-to-spectrogram
 
+
+| Model | Type |
+|:--------| :---------:|
+| Tacotron |RNN | 
+| Tacotron v2 |RNN | 
+| Neural HMM TTS |SPP + Neural | 
+| DeepVoice v1 |CNN | 
+| DeepVoice v2 |CNN | 
+| DeepVoice v3 |CNN | 
+| Speedyspeech |CNN | 
+| TransformerTTS |Transformer | 
+| Glow-TTS |Transformer |
+| FastSpeech |Transformer | 
+| FastSpeech 2/2s |Transformer | 
+| FastPitch |Transformer | 
+| OverFlow |Flow | 
+| SC-GlowTTS |Flow | 
+| RAD-TTS |Flow | 
+| Diff-TTS |Diffusion Model | 
+| Grad-TTS |Diffusion Model | 
+| Align-TTS |Other | 
+| Capacitron |Other | 
+| Delightfull TTS |Other | 
+| Mixer_TTS/TTS-x |Other | 
+
+
+
+
+
 <!-- # RNN -->
 
 ### 1. Tacotron
@@ -2604,21 +2633,165 @@ speech utilizing attention-based variable-length embeddi》）模型提出的结
 
 未来的工作可能会改进该模型，使其能够对诸如音调、语调、语速、抑扬顿挫和重音等语音方面进行操作。此外，Attentron表明，针对speaker表示的几个参考样本提高了训练中未见过的speaker的相似度，后续打算将SC-GlowTTS扩展为一种few-shot方法。
 
-
-
-
-
-
-
-
 ------
 
-### 13. RAD-TTS
+### 13. RAD-TTS:Parallel Flow-Based TTS with Robust Alignment Learning and Diverse Synthesis
 
 !> https://nv-adlr.github.io/RADTTS
 
 !> https://openreview.net/pdf?id=0NQwnnwAORi
 
+#### Abstract
+
+本文介绍了一种并行的端到端的TTS模型，该模型基于normalising flows。它扩展了先前的并行方法，将语音节奏（speech rhythm)额外建模为单独的生成分布，以促进推理过程中的可变token的duration。我们进一步提出了一个用于语音-文本对齐是我在线提取的稳健框架——这是端到端TTS框架中一个关键但高度不稳定的学习问题。我们的实验表明，与受控基线相比，我们提出的技术产生了更好的对齐质量和更好的输出多样性。
+
+#### 1.Introduction
+
+虽然语音合成是以完全自回归的方式最自然地按顺序建模的，但训练和推理速度与序列长度的关系很差。此外，在完全自回归模型中，单个预测不佳的音频帧可能会灾难性地影响所有后续的推断步骤，从而禁止其用于推断长序列。最近的工作提出了越来越多的并行解决方案来解决这些问题。他们首先确定输入文本中每个音素的持续时间，然后使用生成的并行架构并行而非顺序地对每个mel声谱图帧进行采样和解码。然而，并行体系结构本身也存在挑战。以下工作提出了RAD-TTS：一种文本到语音（TTS）框架，具有强大的对齐学习和多样化的合成功能。**我们提出了一个稳定且无监督的对齐学习框架，适用于几乎任何TTS框架，以及一个生成音素持续时间模型，以确保并行TTS架构中的多样输出。**
+
+无监督的音频-文本对齐的学习是困难的，特别是在并行架构中。有些模型使用了现成的强制对齐器。而其他人则选择从自回归模型中提取注意力（或强制
+aligner）在昂贵的两阶段过程中转换成并行架构，这使得训练更加昂贵。从外部对齐器获得对齐具有严重的局限性，因为它需要为每种语言和字母表找到或训练一个外部对齐器，并且需要近乎完美的文本规范化。和我们的工作相关的是Glow-TTS,它在normalising flows框架中提供了一个对齐机制。我们的工作拓展了它的对齐，使其可以推广到任何TTS框架，并提高了稳定性。
+
+我们进一步解决了并行TTS架构中有限的合成多样性问题。这些架构首先确定每个音素的持续时间。然后，并行架构将基于预测的持续时间在时间上复制音素映射到相应的Mel声谱图帧。即使后一种并行架构是生成的，音素预测通常也是确定性的。**这限制了输出的多样性，因为许多可变性取决于讲话节奏（speech rhythm)**。即使是基于流的模型，如Glow-TTS，也使用确定性回归模型来推断持续时间。因此，我们建议仅对token持续时间使用单独的生成模型。我们的结果表明，与固定持续时间的基线相比，推断结果更加多样化。
+
+综上，我们的工作包括：
+
+1. 结合了前向算法和先验的快速收敛对齐学习框架
+2. 生成式的持续时间建模，以确保并行TTS架构中的多样性抽样
+
+#### 2.Method
+
+我们的目标是给定text和speaker information构建一个生成式的mel-spectrograms 采样模型。我们扩展了志强的bipartite-flow TTS方法，通过文件的对齐学习机制和生成式的持续时间预测。我们将过程描述如下：
+
+1. 考虑一个speech被标示为mel-spectrogram张量$X\in R^{C_{mel}\times T}$,这里的$T$是mel-frames的个数（时间维度）$C_{mel}$是每个frame的维度表示。
+2. $\Phi \in R^{C_{txt}\times N}$表示text序列的嵌入张量，text sequence的长度是$N$,$A\in R^{N\times T}$表示文本和mel-spectrogram的对齐矩阵如下图所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/13/p1.png" /> 
+</div>
+
+3. $\varepsilon$是speaker的编码。
+
+我们建模如下条件概率：
+$$P(X,A|\Phi,\varepsilon) = P_{mel}(X|\Phi,\varepsilon,A)P_{dur}(A|\Phi,\varepsilon)$$
+
+推断阶段我们可以采样mel-spectrogram帧和duration，同时保证$P_{mel}$的建模时并行架构，如下图所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/13/p2.png" /> 
+</div>
+
+##### 2.1 Normalizing Flows
+
+我们首先概述normalising flows,TTS中其应用在mel-decoding中。$p_X(x)$表示每个mel-frame帧的位置的对数似然函数（简洁起见$P_{mel}$省略了条件概率中的条件）。我们期望建模每个时间步$x\in X$的抽样分布是独立同分布的标准准态分布。为了达到目的，我们拟合了一个可逆的函数$g$,使得$z=g^{-1}(x)$,$z\sim N(0,1)$.使用变量变化函数：
+
+$$p_X(x)=p_Z(z)|detJ(g(z))|^{-1}$$
+
+这里的$J$是可逆变换的Jacobian矩阵，$p_Z(z)$是高斯对数似然函数$N(z;0,I)$,我们得到的关于数据样本$x$的最大对数似然目标写成：
+
+$$logp_X(x)=logp_Z(g^{-1}(x))+log|detJ(g^{-1}(x))|$$
+
+其中我们通过找到$g$的参数来实现精确的MLE(极大似然估计），该参数使右手边最大化。通过$z\sim N(0,I)$,$x=g(z)$进行推理过程。
+
+##### 2.2 Mel Decoder Architecture
+
+我们的mel解码器模型，我们将继续表示为$g$，在上式中仅对$P_{mel}()$进行建模，尽管我们稍后将展示类似的公式用于对$P_{dur}()$进行模型化。decoder允许我们从独立同分布的高斯分不中抽样隐变量$z$,将隐变量映射为听起来合理的mel-frame $x$. 这个变换必须是可逆的，它的行为需要以text $\Phi$, speaker $\varepsilon$, alignment $A$为条件。我们将$g$构造为可逆函数的复合，特别是：
+
+$$X=g(Z;\Phi,\varepsilon,A)=g_1 \diamond g_2...g_{K-1} \diamond g_K(Z;\Phi,\varepsilo,A)$$
+$$Z=g^{-1}_ K \diamond g^{-1}_ {K-1}...g^{-1}_ 2 \diamond g^{-1}_ 1(X;\Phi,\varepsilon,A)$$
+
+注意$X$是所有的mel-spectrogram 序列，$Z$是隐变量维度和$X$相同，$z\sim N(0,I)$，对于$z\in Z$,对于每一个复合函数$g_k(X;\Phi,\varepsilon,A)$都是一个可逆的网络层。下文称为 a step of flow。
+
+基于之前的结果，我们使用Glow-based的bipartite-flow architecture，每个step of flow是一个`1x1`可逆的卷积与仿射耦合层（ affine coupling layer）配对：
+
+**Affine Coupling Layer:**
+
+Coupling Layer是一个可逆变换族，one split of the input data is used to infer scale and translation parameters
+to affine transform the rest,如算法1所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/13/p3.png" /> 
+</div>
+
+这里的$f_{param}()$是任意函数用来预测仿射参数$s$,$b$是剩余的channel $x_b$的参数。除了input $x_a$之外，还有$context$,这里包括$\Phi$,$\varepsilon$，$A$.
+
+**1x1 Invertible Convolution：**
+
+Affine Coupling Layer往往是相同的split,为了混合channnel保证每个channel均得到变换，有很多办法，其中可以使用一个可逆的可学习的线性板换矩阵$W$,input是80维的mel-spectrogram,$W$就是一个$80\times 80$的矩阵，这类似于一个kernal-size=1的在$X$上的卷积操作：
+$$f^{-1}_ {conv}=Wx$$
+$$log|detJ(f^{-1}_ {conv}(x))|=log|det W|$$
+
+实践中我们采用矩阵的LU分解，加速训练。
+
+###### 2.2.1 UNSUPERVISED ALIGNMENT LEARNING
+
+我们通过自监督的方式学习text和speech之间的对齐，而不依赖于额外的对齐器。进过很少的迭代步数我们的对齐就会收敛。为了学习$X$和$\Phi$的对齐，我们使用了HMM中的Viterbi和前向-后向算法，学习hard和soft的对齐。
+
+令$A_{soft} \in R^{N\times T}$表示文本$\Phi$和mel-frame $X$的对齐矩阵，这里的$A_{soft}$矩阵的每列是归一化的概率分布。采样的对齐矩阵的可视化如图2所示。我们的最终目的是得到一个单调的二值的对齐矩阵$A_{hard}$.使得对于每一帧，概率质量集中在单个符号上,$\sum^{T}_ {j=1}A_{hard,i,j}$生成每个音素的duration。
+
+**Extracting $A_{soft}$**: 与Glow TTS类似，软对齐分布基于所学习的所有文本$\phi \in \Phi$和mel帧$x\in X$之间的成对关系，在text的维度上做softmax:
+$$D_{i,j}=dist_{L_2}(\phi_^{enc}_ i,x^{enc}_ j)$$
+$$A_{soft}=softmax(-D,dim=0)$$
+
+这里的$x^{enc},\phi^{enc}$表示$x$和$\phi$的编码，使用2-3层的1D CNN。我们发现简单的感受野小的变换能产生好的结果，相反，复杂的网络感受野大反而很差。
+
+给定观测值使用前向-后弦算法最大化隐藏状态的似然估计。我们仅关注前向的概率。text被定义为隐藏状态，mel-frame被定义为观测值，最大化$P(S(\Phi)|X)$,考虑所有的单调对齐序列$s\in S(\Phi)$,比如其中一个对齐：$s:\\{s_1=\phi_1,s_2=\phi_2,...,s_T=\phi_N\\}$. 一个**单调的对齐序列**$s\in S$必须满足： 1.开始于第一个文本，结束于最后一个文本；2.每一个text token $\phi_n$必须至少出现1次；3.每次推进mel-frame，序列可以前进0或1个文本token.
+
+所有有效的单调对齐对应的似然函数为：
+$$P(S(\Phi)|X)=\sun_{s\in S(\phi)}\prod^{T}_ {t=1}P(s_t|x_t)$$
+可以使用CTC损失进行快速的实现。
+
+**Beta-Binomial Alignment Prior**： 我们使用雪茄形对角先验加速对齐学习，他促使元素集中在对角线上，可以表示为一个Beta-Binomial distribution。虽然表述不同，但它在概念上类似于《Efficiently
+trainable text-to-speech system based on deep convolutional
+networks with guided attention》中使用的引导注意力损失（guided attention loss），我们相信模型训练实际上受益于任何合理的对角线形状的先验，关于雪茄形对角先验的可视化可以参考图2.b。
+
+**Extracting A_{hard}$**: 通过持续时间预测生成的对齐是离散的。因此，有必要将模型$g$设置在二进制对齐矩阵$A_{hard}$上，以避免产生train-tes的gap。
+我们使用Viterbi算法来实现这一点，同时对如上所述的单调对齐应用相同的约束。这给了我们在$A_{soft}$定义的单调路径上的分布中最可能的单调对齐。
+
+由于Viterbi算法是不可微的，以$A_{hard}为条件训练$g$将意味着对齐学习注意力机制将不会从$g$接收梯度。与（《A generative
+flow for text-to-speech via monotonic alignment
+search》）类似，我们通过最小化他们的KL散度，进一步强调$A_{soft}尽可能多地匹配$A_{hard}$:
+$$L_{bin}=A_{hard}\bigodot logA_{soft}$$
+
+##### 2.3 Generative Duration Modeling $P_{dur}$
+
+近期的并行的TTS架构使用确定性的回归模型来预测lexical unit的duration，这导致在推断的过程中比生成式的自回归模型的多样性差，其中持续时间与其他语音特征一起被联合采样。我们通过单独的normalising flows模型来解决这个问题，该模型仅用于建模$P_{dur}()$。它可以使用另一个完全并行的bi-partite flow来构建或者自回归的flow类似于《Flowtron:
+an autoregressive flow-based generative network for textto-
+speech synthesis》
+
+##### 2.4 Training Schedule (不翻译了，应该大家都能看懂)
+
+Our model uses a training schedule to account for the evolving
+reliability of extracted alignments. Let $L_{align}$ be the
+minimization of the log likelihood of (8). $L_{mel} and $L_{dur}$
+minimize (3) with respect to the decoder flow and phoneme
+flow respectively. The training begins with the loss function
+$L = L_{mel} + \lambda_1 L_{align}$, with the corresponding changes
+applied at given steps:
++ $[0, 6k):$ Use Asoft for the alignment matrix.
++ $[6k, 18k)$: start using Viterbi $A_hard$ instead of $A_{soft}$ ,
++ $[18k, end)$: add binarization term $\lambda_2 L_{bin}$ to the loss.
+
+The duration predictor shares text embeddings with the decoder
+flow model, but is otherwise fundamentally disjoint
+and converges rapidly(但在其他方面基本上是不相交的并且快速收敛). Thus $L_{dur}$ is applied once the decoder
+has converged and its weights frozen.
+
+#### 3.Experiments
+
+使用WaveGlow完成mel-spectrogram到wavedorm的转换。对于推断过程，$z_{dur} \sim N(0,\sigma=0.7)$,$z_{mel}\sim N_{trunc}(0,\sigma={0.5,0.667})$后者使用了截断的正态分布，在$1.1\sigma$处截断。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/13/p4.png" /> 
+</div>
+
+感觉不如Glow-TTS!
+
+#### 4.Conclusion
+
+我们通过提出用于音素持续时间建模的专用生成流来解决并行TTS架构中的输出多样性问题。此外，我们提出的端到端对齐架构扩展了先前工作的架构，以实现更好的收敛速度和在我们的受控架构上测量的更好的合成样本质量。
+
+------
 
 <!-- # Diffusion-->
 ### 14. Diff-TTS
@@ -2630,12 +2803,15 @@ speech utilizing attention-based variable-length embeddi》）模型提出的结
 
 !> https://arxiv.org/abs/2105.06337
 
+!> https://github.com/huawei-noah/Speech-Backbones/tree/main/Grad-TTS
+
 
 <!-- other -->
 
 ### 16. Align-TTS
 
 !> https://arxiv.org/abs/2003.01950
+<!-- https://zhuanlan.zhihu.com/p/344775317 -->
 
 
 
