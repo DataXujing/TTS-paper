@@ -2794,16 +2794,152 @@ has converged and its weights frozen.
 ------
 
 <!-- # Diffusion-->
-### 14. Diff-TTS
+### 14. Diff-TTS：A Denoising Diffusion Model for Text-to-Speech
 
 !> https://arxiv.org/abs/2104.01409
 
+!> https://jmhxxi.github.io/Diff-TTS-demo/index.html
+
+!> 推荐李宏毅的Diffusion Model的教程：<https://www.bilibili.com/video/BV1734y1c7Hb?p=1&vd_source=def8c63d9c5f9bf987870bf827bfcb3d>
+
+
+#### Abstract
+
+基于神经网络的TTS备受关注并且在合成人类语音上取得了成功，但依然需要进一步提升合成的自然度和更高效的架构。本文我们提出了一种新颖的非自回归的TTS模型，称为Diff-TTS,在合成质量和合成效率上均有提升。给定text，Diff-TTS利用去噪diffusion架构通过diffusion times step将噪声信号转换为mel-spectrogram。为了学习给定text的mel-spectrogram的条件分布，我们提供了一个likelihood-based的优化方法。进一步的为了提高合成速度，我们加速了采样方法，保证合成速度的同时没有显著降低合成质量。实验显示，Diff-TTS在单显卡NVIDIA 2080Ti GPU上是实时合成速度的28倍。
+
+#### 1.Introduction
+
+大部分的基于深度学习的TTS包含2个部分，第一部分是声学模型：将文本转化为声学特征比如Mel-Spectrogram；第二部分是声码器：将声学特征转化为声波。这篇paper关注声学模型。
+
+这些年因为深度学习原因TTS备受关注。现代的TTS可以分成2类：自回归（AR）模型和非AR模型。AR模型通过按顺序将输出分布分解为条件分布的乘积提高生成质量。AR模型的例子比如Tacotron2，Transformer-TTS等可以生成很自然的语音，但是推断速度会随着mel-spectrogram的长度增加推断时间线性增加。此外AR模型存在缺陷比如跳词或重复合成。最近非AR的模型用以克服AR模型的缺陷比如Flowtron,《Non-autoregressive
+neural text-to-speech》，FastPitch,《End-to-end adversarial text-to-speech》。即使非AR模型可以合成稳定的语音并且合成速度较AR模型更快，但是依然有限制。比如一些feed-farward的模型FastSpeech1,2和SpeedySpeech不能合产生多样性的合成语音（diverse synthetic speech），因为他们使用了简单的回归损失函数而没有添加任何概率模型。另外，基于flow的模型比如Flow-TTS,Glow-TTS由于强加在基于normalising flow-based的模型上的体系结构约束，参数效率低下。
+
+同时，denoising diffusion模型作为生成式的模型已在图像生成和raw audio synthesis中取得成功。denoising diffusion模型基于极大似然损失可以得到稳定的优化，同时享有架构选择的自由。
+
+鉴于去噪扩散的优点，我们提供了Diff-TTS,一个新颖的non-AR TTS获得了稳健，可控制和高质量的语音合成。训练Diff-TTS不需要额外的辅助损失，我们提供了基于对数似然的优化方法。因为Diff-TTS有马尔可夫假设的限制，伴随着缓慢的推理速度，我们介绍了加速采样方法（DDIM:Denoising diffusion implicit models),实验表明Diff-TTS是一个高效的，强大的合成模型，我们的贡献如下：
++ 据我们所知，Diff-TTS是第一个将DDPM用在non-AR TTS上的模型，Diff-TTS模型不依赖于模型架构的限制。
++ 在参数量只有Tacotron2和Glow-TTS一半的情况下,依然合成出高保真的语音。
++ 使用了加速的采样方法，Diff-TTS可以基于硬件在合成质量和合成速度上做trade-off。更深入的，Diff-TTS的合成速度远超实时。
++ 我们分析了Diff-TTS如何控制音律，Diff-TTS的音高变异性取决于潜在的空间和附加噪声。Diff-TTS可以通过将温度项乘以方差来有效地控制音高可变性。
+
+这篇paper的行文如下：介绍了TTS的denoising diffusion framework，提供了一个Diff-TTS的模型架构。在实验阶段分析了Diff-TTS的优点。
+
+#### 2.Diff-TTS
+
+这一部分我们首先展示了Diff-TTS的概率模型，然后提供了基于对数似然的目标函数训练Diff-TTS。下一步，我们介绍了2种采样方法：（1）normal diffusion sample based on the Markovian diffusion process,（2）加速版本的diffusion sampling。最后我们提供了Diff-TTS的模型架构。
+
+##### 2.1 Denoising diffusion model for TTS
+
+Diff-TTS将白噪声转换为mel-spectrogram的给定文本的条件分布。如下图所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/14/p1.png" /> 
+</div>
+
+mel-spectrogram逐渐被高斯噪声破坏并转换为潜在变量。这个过程被称为diffusion process。令$x_1,...,x_T$是一个随机变量的序列有相同的维度，这里的$t=0,1,...,T$是diffusion time steps的下标。diffusion process将mel-spectrogram $x_0$变换为Gaussian noise $x_T$通过一个马尔可夫链变换。每个时间步的变换都定义了一个变换的系数$\beta_1,\beta_2,...,\beta_T$。每个变换都是根据马尔可夫转移概率执行的$q(x_t|x_{t-1},c)$,假定独立于文本$c$，其定义如下：
+$$q(x_t|x_{t-1},c)=N(x_t;\sqrt{1-\beta_t}x_{t-1},\beta_tI)$$
+
+!> 上面公式的详细推到可以参考DDPM原始paper或李宏毅老师的diffusion model的视频教程.
+
+全部的diffusion process $q(x_{1:T}|x_0,c)$是一个马尔可夫过程，可以表示为：
+$$q(x_1,...,x_T|x_0,c)=\prod^{T}_ {t=1}q(x_t|x_{t-1})$$
+
+reverse process是mel-spectrogram的生成过程，是diffusion process的逆过程。不同于diffusion process,目的是从Gaussian noise中恢复mel-spectrogram。reverse process被定义为条件概率$p_{\theta}(x_{0:T-1}|x_T,c)$,它可以基于马尔可夫分解为多个转换
+链式特性:
+$$p_{\theta}(x_0,...,x_{T-1}|x_T,c)=\prod^{T}_ {t=1}p_{\theta}(x_{t-1}|x_t,c)$$
+
+通过reverse变换$p_{\theta}(x_{t-1}|x_t,c)$，潜在变量逐渐恢复到与文本条件下的diffusion time-step相对应的mel-spectrogram。换句话说，Diff-TTS学习分布$p_{\theta}(x_0|c)$在reverse process。令$q(x_0|c)$为mel-spectrogram的分布。为了更好的近似$q(x_0|c)$,reverse process目标是最大化mel-spectrogram的对数似然$E_{log q(x_0|c)}[logp_{\theta}(x_0|c)]$。因为$p_{\theta}(x_0|c)$是棘手的，我们使用DDPM中的方法计算该目标的下界（或详细的也可以参考李宏毅老师的视频课中讲解的VAE和Diffusion model的目标函数的下界是如何计算的）。令$\alpha_t=1-\beta_t$，$\bar{\alpha}_ {t}=\prod^{t}_ {t^{'}=1}\alpha_{t^{'}}$。训练Diff-TTS的目标函数是：
+$$min_{\theta}L(\theta)=E_{x_0,\varepsilon,t}||\varepsilon-\varepsilon_{\theta}(\sqrt{\bar{\alpha}_ {t}}x_0+\sqrt{1-\bar{\alpha}_ {t}}\varepsilon,t,c)||_ {1}$$
+这里的$t$是diffusion time-step。Diff-TTS不需要额外的辅助损失除了这个$L_1$ Loss， $\varepsilon_{\theta}(.)$是diffusion process过程的输出，$\varepsilon \sim N(0,I)$. Diff-TTS通过用$\varepsilon_{\theta}(x_t,t,c)$迭代预测在每个前向转换处添加的扩散噪声，从潜在变量中检索mel-spectrogram，移除过程如下：
+$$x_{t-1}=\frac{1}{\sqrt{\alpha_t}}(x_t-\frac{1-\alpha_t}{\sqrt{1-\bar{\alpha}_ {t}}}\varepsilon_{\theta}(x_t,t,c))+\sigma_{t}z_{t}$$
+这里的$z_t\sim N(0,I)$,$\sigma_t=\eta\sqrt{\frac{1-\hat{\alpha}_ {t-1}}{1-\bar{\alpha}_ {t}}\beta_t}$,温度$\eta$是方差的一个缩放因子。注意diffusion time-step $t$是Diff-TTS的一个输入，对于模型针对于diffusion time-step共享所有参数。作为结果，最终的mel-spectrogram分布$p(x_0|c)$是通过所有时间步的迭代得到的。
+
+##### 2.2 Accelerated Sampling
+
+即使denoising diffusion是并行的生成式模型，但是在推断过程随着diffusion step的部署变大依然需要花费很长的时间。为了解决这个问题，DDIM一种新的采样方法可以加速采样，在不需要重新训练的前提下加速采样。加速采样在整个推理轨迹的子序列上生成样本。重要的是这种高效的技术采样质量不会恶化，即使是减少了采样的步数。为了提高合成速度，Diff-TTS使用了这种加速采样的办法。reverse transition通过一个抽取因子$\gamma$进行跳步。如下图所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/14/p2.png" /> 
+</div>
+
+新的采样的周期为$\tau=[\tau_1,\tau_2,...,\tau_M]$其中$M<T$,是时间步$1,2,...,T$的一个采样,加速采样过程可以描述为($i>1$):
+$$x_{\tau_{i-1}}=\sqrt{\bar{\alpha}_ {\tau_{i-1}}}(\frac{x_{\tau_{i}}-\sqrt{1-\bar{\alpha}_ {\tau_i}}\varepsilon_{\theta}(x_{\tau_i},\tau_i,c))}{\sqrt{\bar{\alpha}_ {\tau_{i}}} })+ \sqrt{1-\bar{\alpha}_ {\tau_{i-1}}-\sigma^2_ {\tau_i}}\varepsilon_{\theta}(x_{\tau_i},\tau_i,c))+\sigma_{\tau_i}z_{\tau_i}$$
+
+这里的$\sigma_{\tau_i}=\eta\sqrt{\frac{1-\bar{\alpha}_ {\tau_{i-1}}}{1-\bar{\alpha}_ {\tau_{i}}}\beta_{\tau_i}}$,对于$i=1$时，
+$$x_0=\frac{x_{\tau_1}-\sqrt{1-\bar{\alpha}_ {\tau_1}}\varepsilon_{\theta}(x_{\tau_1},\tau_1,c)) }{\sqrt{\bar{\alpha}_ {\tau_1}}}$$
+
+通过使用加速采样方法，Diff-TTS依然可以生成高保真的mel-spectrogram,换句话说，新的采样方法可以提高合成速度。
+
+##### 2.3 Model Architecture
+
+Diff-TTS的模型结构如下图所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/14/p3.png" /> 
+</div>
+
+主要包含text encoder, step encoder, duration predictor, decoder几个部分。
+
+**Encoder**: encoder从音素序列中提取上下文信息，接着提供了一个duration predictor和decoder。Diff-TTS的encoder类似于SpeedySpeech。encoder的Pre-net input embedding然后拼接一个全连接层（FC）使用ReLU作为激活函数。接着,text encoder模块以该音素的嵌入作为input。encoder模块包含10个residual blocks使用了空洞卷积和LSTM层。空洞卷积的dilations为$[1,2,4,1,2,4,1,2,4,1]$,kernel size是4，使用ReLU激活函数和layer norm归一化。
+
+**Duration Predictor and Length Regulator**:Diff-TTS使用了类似于FastSpeech和FastSpeech V2的length regulator用来匹配音素和mel-spectrogram序列的长度。length regulator需要对齐信息来扩展音素序列控制语音速度。在这篇paper中，使用了Montreal forced alignment (MFA) （《Montreal forced aligner: Trainable text-speech alignment using kaldi》） 替代attention作为对齐提取器。MFA提供了更稳健的对齐相比于attention-based的方法并且提高了对齐的精度。duration predictor在对数域上从MFA中提取duration，使得duration的预测更稳定。duration predictor使用$L_1 Loss$进行优化。
+
+**Decoder and Step Encoder**:这一部分我们借鉴了Diffwave: A versatile diffusion model for audio synthesis的模型架构。Decoder预测第$t$步的Gaussian噪声以时间$t$和音素的嵌入作为条件。因为融入了时间步的嵌入，每一个时间步的$\varepsilon_{\theta}(.,t,c))$是不同的。时间步的嵌入基于正弦曲线嵌入，每个时间$t$表示为128维的嵌入向量。step encoder 又2层FC layer使用Swish激活。Decoder网络堆叠了12层的residual blocks,使用1D卷积，tanhmsigmoid和`1x1`卷积,512个残差通道。如上图所示，音素嵌入被length regulator扩展，接着音素嵌入和时间步的嵌入相加拼接在1D卷积后。1D卷积kernel size是3，没有使用dilation。经过残差block,输出给Post-net。最后，decoder得到以当前时间步和音素嵌入的**高斯噪声**。
+
+#### 3.Experiments
+
+我们使用单说话人数据集验证我们的Diff-TTS,数据集为LJSpeech, 约24h的语音，12500样本用于训练，100样本用于验证，500样本用于测试。训练迭代700k次，在单2080Ti上训练，使用HiFi-GAN作为声码器。效果参见：<https://jmhxxi.github.io/Diff-TTS-demo/index.html>
+
+##### 3.1 Audio quality and model size
+
+合成质量如下图所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/14/p4.png" /> 
+</div>
+上图所示，即使$T=400,\gamma=57$效果也基本比Tacotron2和Glow-TTS要好。
+
+模型大小如下图所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/14/p5.png" /> 
+</div>
+
+可以看到Diff-TTS的参数量仅为Tacotron2和Glow-TTS的一半左右。
+
+##### 3.2 Inference speed
+
+我们的评价指标是real-time factor (RTF)（参考<https://blog.csdn.net/zhulinniao/article/details/103812936>),其实验结果如下图所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/14/p6.png" /> 
+</div>
+
+Diff-TTS的在$\gamma=57$时，RTF仅为0.035。可以达到实时识别的28倍，同时结合上面的实验结果，此时对合成质量并没有实质性的破坏。
+
+##### 3.3 Variability and controllability
+
+合成的韵律分析上，如下图所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/14/p7.png" /> 
+</div>
+
+通过控制温度$\eta \in \\{0.2,0.6\\}$$可以满足语音合成的多样性。上图展示，越大的温度，合成语音的多样性越大，同时保持了语音的质量。这表明Diff-TTS训练一次可以得到不同韵律变化的模型，这可以通过温度进行控制。
+
+#### 4.Conclusions
+
+我们设计了第一个non-AR的基于diffusion的TTS模型-Diff-TTS。为了在语音合成中使用denoising diffusion，我们展示了一个新颖的基于对数似然的优化方法。我们正式Diff-TTS可以合成可控的，高保真的语音。特别的Diff-TTS有如下优点：（1）Diff-TTS参数量比Tacotron2和Glow-TTS少，但合成质量比他们好。（2）使用了加速的采样方法Diff-TTS可以在合成质量和合成速度上做trade-off。Diff-TTS的合成速度实时合成速度的28倍，且不显著降低合成质量。（3）Diff-TTS可以在方差中乘以一个温度控制韵律变化。我们相信基于上述有点基于denoising diffusion的语音合成将得到长足发展。未来，我们计划将Diff-TTS用于多说话人合成和情感语音合成。
+
+------
 
 ### 15. Grad-TTS
 
 !> https://arxiv.org/abs/2105.06337
 
 !> https://github.com/huawei-noah/Speech-Backbones/tree/main/Grad-TTS
+
+!> 这是华为2021年的工作,2022年华为发表了 Fast Grad-TTS,清华大学实现了LightGrad-TTS
 
 
 <!-- other -->
