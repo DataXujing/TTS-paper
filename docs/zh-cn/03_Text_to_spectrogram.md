@@ -2697,7 +2697,7 @@ $$logp_X(x)=logp_Z(g^{-1}(x))+log|detJ(g^{-1}(x))|$$
 
 我们的mel解码器模型，我们将继续表示为$g$，在上式中仅对$P_{mel}()$进行建模，尽管我们稍后将展示类似的公式用于对$P_{dur}()$进行模型化。decoder允许我们从独立同分布的高斯分不中抽样隐变量$z$,将隐变量映射为听起来合理的mel-frame $x$. 这个变换必须是可逆的，它的行为需要以text $\Phi$, speaker $\varepsilon$, alignment $A$为条件。我们将$g$构造为可逆函数的复合，特别是：
 
-$$X=g(Z;\Phi,\varepsilon,A)=g_1 \diamond g_2...g_{K-1} \diamond g_K(Z;\Phi,\varepsilo,A)$$
+$$X=g(Z;\Phi,\varepsilon,A)=g_1 \diamond g_2...g_{K-1} \diamond g_K(Z;\Phi,\varepsilon,A)$$
 $$Z=g^{-1}_ K \diamond g^{-1}_ {K-1}...g^{-1}_ 2 \diamond g^{-1}_ 1(X;\Phi,\varepsilon,A)$$
 
 注意$X$是所有的mel-spectrogram 序列，$Z$是隐变量维度和$X$相同，$z\sim N(0,I)$，对于$z\in Z$,对于每一个复合函数$g_k(X;\Phi,\varepsilon,A)$都是一个可逆的网络层。下文称为 a step of flow。
@@ -2852,7 +2852,7 @@ $$p_{\theta}(x_0,...,x_{T-1}|x_T,c)=\prod^{T}_ {t=1}p_{\theta}(x_{t-1}|x_t,c)$$
 $$min_{\theta}L(\theta)=E_{x_0,\varepsilon,t}||\varepsilon-\varepsilon_{\theta}(\sqrt{\bar{\alpha}_ {t}}x_0+\sqrt{1-\bar{\alpha}_ {t}}\varepsilon,t,c)||_ {1}$$
 这里的$t$是diffusion time-step。Diff-TTS不需要额外的辅助损失除了这个$L_1$ Loss， $\varepsilon_{\theta}(.)$是diffusion process过程的输出，$\varepsilon \sim N(0,I)$. Diff-TTS通过用$\varepsilon_{\theta}(x_t,t,c)$迭代预测在每个前向转换处添加的扩散噪声，从潜在变量中检索mel-spectrogram，移除过程如下：
 $$x_{t-1}=\frac{1}{\sqrt{\alpha_t}}(x_t-\frac{1-\alpha_t}{\sqrt{1-\bar{\alpha}_ {t}}}\varepsilon_{\theta}(x_t,t,c))+\sigma_{t}z_{t}$$
-这里的$z_t\sim N(0,I)$,$\sigma_t=\eta\sqrt{\frac{1-\hat{\alpha}_ {t-1}}{1-\bar{\alpha}_ {t}}\beta_t}$,温度$\eta$是方差的一个缩放因子。注意diffusion time-step $t$是Diff-TTS的一个输入，对于模型针对于diffusion time-step共享所有参数。作为结果，最终的mel-spectrogram分布$p(x_0|c)$是通过所有时间步的迭代得到的。
+这里的$z_t\sim N(0,I)$,$\sigma_t=\eta\sqrt{\frac{1-\bar{\alpha}_ {t-1}}{1-\bar{\alpha}_ {t}}\beta_t}$,温度$\eta$是方差的一个缩放因子。注意diffusion time-step $t$是Diff-TTS的一个输入，对于模型针对于diffusion time-step共享所有参数。作为结果，最终的mel-spectrogram分布$p(x_0|c)$是通过所有时间步的迭代得到的。
 
 ##### 2.2 Accelerated Sampling
 
@@ -2925,7 +2925,7 @@ Diff-TTS的在$\gamma=57$时，RTF仅为0.035。可以达到实时识别的28倍
     <img src="zh-cn/img/ch3/14/p7.png" /> 
 </div>
 
-通过控制温度$\eta \in \\{0.2,0.6\\}$$可以满足语音合成的多样性。上图展示，越大的温度，合成语音的多样性越大，同时保持了语音的质量。这表明Diff-TTS训练一次可以得到不同韵律变化的模型，这可以通过温度进行控制。
+通过控制温度$\eta \in \\{0.2,0.6\\}$可以满足语音合成的多样性。上图展示，越大的温度，合成语音的多样性越大，同时保持了语音的质量。这表明Diff-TTS训练一次可以得到不同韵律变化的模型，这可以通过温度进行控制。
 
 #### 4.Conclusions
 
