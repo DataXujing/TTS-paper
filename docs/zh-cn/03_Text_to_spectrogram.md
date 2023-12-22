@@ -1,6 +1,17 @@
 ## Text-to-spectrogram
 
-<div align=center>
+
+<style>
+.center 
+{
+  width: auto;
+  display: table;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+
+<div class="center">
 
 | Model | Type |
 |:--------| :---------:|
@@ -28,6 +39,7 @@
 
 </div>
 
+------
 ------
 <!-- # RNN -->
 
