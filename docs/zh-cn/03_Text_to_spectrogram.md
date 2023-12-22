@@ -1,5 +1,6 @@
 ## Text-to-spectrogram
 
+<div align=center>
 
 | Model | Type |
 |:--------| :---------:|
@@ -25,10 +26,9 @@
 | Delightfull TTS |Other | 
 | Mixer_TTS/TTS-x |Other | 
 
+</div>
 
-
-
-
+------
 <!-- # RNN -->
 
 ### 1. Tacotron
@@ -3210,7 +3210,110 @@ Search）对齐方式。推断时decoder的步数是可以调整的，提供了�
 !> https://arxiv.org/abs/2003.01950
 <!-- https://zhuanlan.zhihu.com/p/344775317 -->
 
+使用Transformer结构产生character的latent reprensentations, 应用duration model预测duration。主要的改进在于没有使用基于attention的模型产生align训练duration model，而是应用动态规划的方法，产生align从而训练duration model。
 
+**1. AlignTTS的结构**
+
+主要包括三个部分：Feed-Forward Transformer module，the duration predictor，the mix density network。
+
++ 1.1 Feed-Forward Transformer
+
+包括了character embedding层、多层的FFT blocks、一个length regulator、一个从文本产生mel-spectrogram的线性层。如图所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/16/p1.png"  /> 
+</div>
+
+length regulator的作用是将文本调整成mel-spectrogram的长度，具体做法是通过duration predictor，给每个character分配一个duration。
+
++ 1.2 Duration Predictor
+
+由character embedding、多层FFT及一个线性层组成。结构如图:
+
+<div align=center>
+    <img src="zh-cn/img/ch3/16/p2.png"  /> 
+</div>
+
+duration predictor的输入为character sequence，输出为每个character对应的duration，即一个duration sequence。在inference过程中，Duration Predictor得到的duration sequence被用到length regulator中，产生text-to-mel-spectrogram的对齐。
+
++ 1.3 Mix Density Network
+
+Feed-Forward Transformer 和 the duration predictor都需要text-to-mel正确对齐，本文设计了Mix Density Network产生对齐。由多层Linear+Layernorm+relu+dropout层以及最后一个线性层组成。结构如图:
+
+<div align=center>
+    <img src="zh-cn/img/ch3/16/p3.png"  /> 
+</div>
+
+最后的线性层输出多维特征的高斯分布，表示了每个character的mel-spectrum的特征分布。Mix Density Network是接在靠近character测得FFT后面的，它的输入和length regulator相同（注意图中$\mathcal{H}$ 
+的位置）。Mix Density Network 的主要作用是产生Feed-Forward Transformer 和 duration predictor 训练需要的align，因此在inference时可以去掉。
+
+**2. 训练及推断**
+
++ 2.1 Alignment Loss
+
+应用Baum-Walch algorithm，产生推断的对齐以及对齐的 loss。假设$y=\\{y_1,y_2,...,y_n\\}$表示mel-spectrogram序列，$n$表示mel-spectrogram的帧数。$z=\\{z_1,z_2,..,z_m\\}$表示Mix Density Network预测出的特征分布，$z_i=(\mu_i,\Sigma_i)$表示平均值向量和协方差矩阵（是个对角矩阵）$m$表示character序列的长度，第$i$帧的mel-spectrogram服从第$j$个character分布的概率可以表示为：
+$$p(y_i|z_j)=N(y_i|\mu_i,\Sigma_j)$$
+
+用$\mathscr{l}$表示对齐,$j=Align(i,\mathscr{l})$表示第$i$帧对齐到第$j$个分布上，那么对齐的概率为：
+$$p(y,\mathscr{l}|z)=\prod^{n}_ {i=0}p(y_i|z_{Align(i,\mathscr{l})})$$
+
+由于我们事先并不知道对齐，并不能直接计算上式，BW算法能够解决这个问题：计算所有可能的对齐对应的概率并相加，如下式所示:
+$$p(y|z)=\sum_{\mathscr{l}}\prod_{i=0}^np(y_i|z_{Align(i,\mathscr{l})})$$
+
+the align loss由下式刻画：
+$$\mathcal{L}_ {align}(z,y)=-logp(y|z)$$
+
+当alignment loss收敛后，可以使用viterbi解码提取alignment。（这里有个疑问BW与viterbi的区别）
+
+!> BW是优化算法（有AB两种未知变量时，假定A最优去优化B；然后假定B最优优化A），AB对应隐变量的分布和对齐路径；维比特是一种动态规划，根据已有分布求出一条最优的对齐路径。
+
++ 2.2 Training
+
+*2.2.1 Forward Algorithm for Alignment Loss*
+
+应用前向后向算法，定义前向变量：
+$$\alpha_{t,s}=p(y_{1:t}|z_{1:s})$$
+其中$y_{1:t}=\\{y_1,y_2,...,y_t\\},0< t \leq n, z_{1:s}=\\{z_1,z_2,..,z_s\\},0<s \leq m$
+
+$$\alpha_{1,1}=p(y_1|z_1),\alpha_{1,s}=0,\forall 1<s \leq m$$
+$$\alpha_{t,s}=(\alpha_{t-1,s}+\alpha_{t-1,s-1})\cdot p(y_t|z_s)$$
+$$\mathcal{L}_ {align}(z,y)=-logp(y_{1:n};z_{1:m})=-log\alpha_{n,m}$$
+
+注意 $\mathcal{L}_ {align}(z,y)$在计算过程中，只用到了sum、product、exponent等操作，因此Mix Density Network可以使用梯度下降方法训练。
+
+*2.2.2 Multi-phases Training*
+
+在实验中同时训练这么多部分比较困难，因此分成不同阶段来训：
+1. 训练FFT前半部分及Mix Density Network，用align loss为目标函数；
+2. 应用Mix Density Network提取align，得到duration sequence，固定FFT前半部分的参数，应用预测的mel-spectrogram与真实mel-spectrogram计算MSE loss，训练FFT后半部分的参数；
+3. 整个FFT和Mix Density Network一起fine tune, FFT中length regulator用到的duration是Mix Density Network实时产生的；
+4. 最后用Mix Density Network提取的align训练duration predictor。
+
++ 2.3 Inference
+
+input character sequence经过embedding，经过FFT前半部分得到hidden feature，同时duration predictor预测出各个character的duration，应用duration对hidden feature扩展，经过FFT后半部分，推测出mel-spectrogram，接着输入至声码器（waveglow）得到最后的音频。
+
+**3. 实验**
+
+数据集：LJSpeech dataset
+
++ 3.1 主观评测得分：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/16/p4.png"  /> 
+</div>
+
+从主观评测得分看，Align-TTS比Tacotron2,Transformer-TTS稍好，合成10秒的音频只需要0.18秒，其中Align-TTS需要0.06秒，Waveglow需要0.12秒。
+
++ 3.2 对齐效果
+
+与FastSpeech产生的对齐对比, 最上面一行是手动标注的alignment，第一张频谱图是Align-TTS的对齐，下面一张频谱图是Transformer-TTS预对齐训练的FastSpeech的对齐。可以看出Align-TTS的对齐更准。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/16/p5.png"  /> 
+</div>
+
+------
 
 ### 17. Capacitron
 
