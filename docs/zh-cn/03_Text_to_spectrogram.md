@@ -741,7 +741,7 @@ SSNT-TTS发现，在合成时随机采样转变导致较差的暂停持续时间
 我们描述了经典的和现代的TTS范式，可以将其组合得到完全 probabilistic, attention-free的seq2seq的基于neural HMM的TTS模型。
 我们的示例系统比Tacotron2更小，但达到了相当的自然度，更快地学会说话和对齐，需要更少的数据，而且不会胡言乱语。据我们所知这是第一个基于HMM的模型在语音质量上优于神经网络的TTS模型。神经HMM还允许容易地控制合成语音的说话速率。
 
-未来的工作包括更强的网络架构，例如，基于transformer和单独训练的post-net。将Neural HMM与强大的分布族结合比如normalising flows，或者替换Gaussion假设或者替换为一个类似于post-net的网络来拟合分布。这可以允许采样语音的自然度超过确定性输出生成的自然度。
+未来的工作包括更强的网络架构，例如，基于transformer和单独训练的post-net。将Neural HMM与强大的分布族结合比如normalizing flows，或者替换Gaussion假设或者替换为一个类似于post-net的网络来拟合分布。这可以允许采样语音的自然度超过确定性输出生成的自然度。
 
 ------
 
@@ -2409,7 +2409,7 @@ ground truth的音高的获取方法，是使用：acoustic periodicity detectio
 
 #### Abstract
 
-最近Neural HMM类型neural transducer被用在了seq2seq的TTS系统中。这种方式将传统的统计方法与现在的神经网络TTS方法相结合，减少了神经网络TTS胡言乱语输出。这篇paper中我们结将Neural HMM与归一化的流（normalising flows)结合起来描述语音声学的高度非高斯分布。结果表明这是一个强大的对duration和acoustic进行全概率建模的方法，训练基于最大似然估计。实验结果表明我们的系统仅需要较少的迭代次数就可以产生高质量的语音。
+最近Neural HMM类型neural transducer被用在了seq2seq的TTS系统中。这种方式将传统的统计方法与现在的神经网络TTS方法相结合，减少了神经网络TTS胡言乱语输出。这篇paper中我们结将Neural HMM与归一化的流（normalizing flows)结合起来描述语音声学的高度非高斯分布。结果表明这是一个强大的对duration和acoustic进行全概率建模的方法，训练基于最大似然估计。实验结果表明我们的系统仅需要较少的迭代次数就可以产生高质量的语音。
 
 #### 1.Introduction
 
@@ -2418,7 +2418,7 @@ neural hidden Markov models》）替代传统的attention可以提升seq2seq TTS
 
 然而，基于neural HMM的TTS框架尚未充分发挥其潜力。特别是状态条件的发射分布被限制为Gaussian或Laplace,这导致了建模人类语音变得薄弱，因为自然语音信号遵循复杂的概率分布。
 
-我们设计了OverFlow,增加了归一化的流（normalising flows)在neural HMM的顶端用来更好的描述语音中的non-Gaussian。提供了全概率的方式建模声学模型和duration,这不同于绝大多数其他的基于flow的模型，使用自回归获取长时记忆的能力。实验表明我们的方法可以快速的学习发音的准确性和合成高质量的语音，比相似的框架比如Tacotron2和Glow-TTS表现要好。合成demo和代码参考：<https://shivammehta25.github.io/OverFlow/>
+我们设计了OverFlow,增加了归一化的流（normalizing flows)在neural HMM的顶端用来更好的描述语音中的non-Gaussian。提供了全概率的方式建模声学模型和duration,这不同于绝大多数其他的基于flow的模型，使用自回归获取长时记忆的能力。实验表明我们的方法可以快速的学习发音的准确性和合成高质量的语音，比相似的框架比如Tacotron2和Glow-TTS表现要好。合成demo和代码参考：<https://shivammehta25.github.io/OverFlow/>
 
 #### 2. Prior work
 
@@ -2428,13 +2428,13 @@ Neural HMM是一种自回归的HMM,其中状态条件发射分布和转移概率
 
 数学上，，neural HMM是一种neural transducer.Neural transducer被成功应用在ASR中，第一次应用在TTS中是SSNT-TTS（《Initial investigation of
 encoder-decoder end-to-end TTS using marginalization of monotonic
-hard alignments》）模型。近期也有人使用单一模型实现ASR和TTS两个任务。我们的模型和这些模型不同是概率模型。最重要的是，我们集成了normalising flow到这类模型中，以获得一个强大的概率框架，能够描述语音声学的行为。
+hard alignments》）模型。近期也有人使用单一模型实现ASR和TTS两个任务。我们的模型和这些模型不同是概率模型。最重要的是，我们集成了normalizing flow到这类模型中，以获得一个强大的概率框架，能够描述语音声学的行为。
 
-##### 2.2 Normalising flows in TTS acoustic modelling
+##### 2.2 Normalizing flows in TTS acoustic modelling
 
-Normalising flows使用深度学习定义高灵敏度的概率分布参数。通过基于神经网络对齐进行一系列非线性可逆变换从一个简单的Gaussian分布穿件一个复杂的分布，可逆性是指变量的变化公式可以用来计算并最大化所得到的的模型的可能性。
+Normalizing flows使用深度学习定义高灵敏度的概率分布参数。通过基于神经网络对齐进行一系列非线性可逆变换从一个简单的Gaussian分布穿件一个复杂的分布，可逆性是指变量的变化公式可以用来计算并最大化所得到的的模型的可能性。
 
-Flows在语音中应用广泛，第一个TTS使flow的声学模型是Flowtron和Flow-TTS.随后是Glow-TTS和RAD-TTS以及EfficientTTS.Flowtron是Tacotron2的一个扩展支持多说华人和global style tokens,将normalising flow嵌入到自回归decoder生成下一个输出帧。和Tacotron2相同，使用attention来学习对齐。Flow-TTS是一个非自回归的架构，依赖于外部的对齐进行训练。Glow-TTS是Flow-TTS的改进同时进行语音学习和对齐的学习，消除了额外的对齐工具。训练过程中它同时使用一种基于Vitervi的动态编程过程从HMM中增强单调对齐。RAD-TTS为持续时间建模集成了一个单独的归一化流，以及一个更精细的对齐机制，但是没有达到Glow-TTS相同的语音质量。EfficientTTS最终描述了两个高效的机制使用传统的dot-product attention用来增强单调对齐，从而提高主观得分。仅仅Flowtron是全概率的模型。
+Flows在语音中应用广泛，第一个TTS使flow的声学模型是Flowtron和Flow-TTS.随后是Glow-TTS和RAD-TTS以及EfficientTTS.Flowtron是Tacotron2的一个扩展支持多说华人和global style tokens,将normalizing flow嵌入到自回归decoder生成下一个输出帧。和Tacotron2相同，使用attention来学习对齐。Flow-TTS是一个非自回归的架构，依赖于外部的对齐进行训练。Glow-TTS是Flow-TTS的改进同时进行语音学习和对齐的学习，消除了额外的对齐工具。训练过程中它同时使用一种基于Vitervi的动态编程过程从HMM中增强单调对齐。RAD-TTS为持续时间建模集成了一个单独的归一化流，以及一个更精细的对齐机制，但是没有达到Glow-TTS相同的语音质量。EfficientTTS最终描述了两个高效的机制使用传统的dot-product attention用来增强单调对齐，从而提高主观得分。仅仅Flowtron是全概率的模型。
 
 除了Flowtron其他flow-based TTS声学模型都是非自回归的（即并行的），这些有利于GPU服务的部署。然而，自回归架构在概率建模上准确性方面往往比非自回归的架构具有优势。融合flows和非自回归HMM的模型在音素识别上取得了SOTA的结果。这些促使着我们融合flows和基于HMM的自回归模型，因为两者均预训使用最大似然估计进行训练并得到强的概率建模结果。
 
@@ -2454,7 +2454,7 @@ Flows已经在端到端的TTS中使用，比如VITS,增加了一个flow-based du
     <img src="zh-cn/img/ch3/11/p1.png" /> 
 </div>
 
-OverFlow,如上图所示，简而言之，我们使用了invertible neural network在neural HMM的output,显著增强了模型输出的率分布表示。section4中的实验验证了我们的想法，剩下的部分我们将介绍两种方法--neural HMM和normalising flows共同构成了我们的模型。
+OverFlow,如上图所示，简而言之，我们使用了invertible neural network在neural HMM的output,显著增强了模型输出的率分布表示。section4中的实验验证了我们的想法，剩下的部分我们将介绍两种方法--neural HMM和normalizing flows共同构成了我们的模型。
 
 Neural HMM是一种概率的encoder-decoder seq2seq的模型，可以用来代替attention对齐input和output。TTS的声学模型中neural HMM encoder将input vector(e.g.音素embedding)编码成一个序列的向量$h_{1:N}$其中N是状态数的left-to-right no-skip的HMM.每个input都被转换为固定数量的vector，比如每个音素2个状态。neural HMM的decoder有两个输入和两个输出，可以写为：
 $$(\theta_t,\tau_t)=Dec(h_n,x_{1:t-1})$$
@@ -2463,13 +2463,13 @@ input是定义的状态向量$h_{s_t}$来自于encoder,与HMM的状态有关$s_t
 
 output有两个一个是$\theta_t$(输出分布(emission distribution)的参数)和转移概率（transition probability) $\tau_t \in [0,1]$.参数$\theta_t$定义了下一个输出为$x_t$的概率分布。大多数的neural HMM都假设$x_t$服从多元高斯分布，协方差是对角阵。该情况下$\theta_t=(\mu_t,\sigma_t)$为两个向量表示$x_t$的均值和标准差。同时$\tau_t$定义了HMM从当前状态转移到下一个状态的概率，即$s_{t+1}=s_t+1$或$s_{t+1}=s_t$.合成的过程开始于$s_1=1$结束于$s_t=N+1$.为了满足马尔可夫假设，HMM的decoder output不依赖于$h_{t-1}$中的之前时间信息，这意味着，模型可以用最大似然函数进行训练。用前向的Viterbi算法计算。关于Neural HMM TTS架构可以参考上图。
 
-Neural HMM描述了离散时间序列的分布，一般假设每个时间帧为高斯分布。Normalising flows(《Normalizing flows for probabilistic modeling and inference》,《Normalizing flows: An introduction and review of current methods》)提供了一种将隐含变量或源分布(latent or source distributions)$Z$（e.g.Gaussian)转换为灵活的目标分布(flexible target distributions)$X$的方法。其原理是：使用invertible nonlinear distributions $f$,得到target distribution,
+Neural HMM描述了离散时间序列的分布，一般假设每个时间帧为高斯分布。Normalizing flows(《Normalizing flows for probabilistic modeling and inference》,《Normalizing flows: An introduction and review of current methods》)提供了一种将隐含变量或源分布(latent or source distributions)$Z$（e.g.Gaussian)转换为灵活的目标分布(flexible target distributions)$X$的方法。其原理是：使用invertible nonlinear distributions $f$,得到target distribution,
 $$X=f(Z;W)$$
 其中$W$是神经网络$f$的参数。可逆性使我们能够使用变量变化公式计算任何观测结果$x$的（对数）概率。
 $$lnp_{X}(x)=lnp_{Z}(f^{-1}(x;W))+ln|detJ_{F^{-1}}(x;W)|$$
-其中$J_{f^{-1}}(x;W)$是$f^{-1}$的Jacobian matrix。即使$f$是一个相对较弱的非线性变换，我们也可以通过将几个分量变换$f_l$链接在一起来获得高度灵活的分布。这些复合变换被称为invertible neural network。重要的是，neural HMM和normalising flows都需要精确的计算最大似然函数，使得它们非常适合语音声学的强概率模型。
+其中$J_{f^{-1}}(x;W)$是$f^{-1}$的Jacobian matrix。即使$f$是一个相对较弱的非线性变换，我们也可以通过将几个分量变换$f_l$链接在一起来获得高度灵活的分布。这些复合变换被称为invertible neural network。重要的是，neural HMM和normalizing flows都需要精确的计算最大似然函数，使得它们非常适合语音声学的强概率模型。
 
-Glows(《Glow: Generative flow with invertible 1x1 convolutions》)是一个著名的normalising-flow架构。它将学习的全局仿射变换与所谓的耦合层交织，对输入向量$z_l \in R^D$的一半元素进行非线性变换,相对于剩余元素（保持不变）的值。调用第$l$个耦合层的输出$z^{′}_ l$，该层是按元素执行
+Glows(《Glow: Generative flow with invertible 1x1 convolutions》)是一个著名的normalizing flows架构。它将学习的全局仿射变换与所谓的耦合层交织，对输入向量$z_l \in R^D$的一半元素进行非线性变换,相对于剩余元素（保持不变）的值。调用第$l$个耦合层的输出$z^{′}_ l$，该层是按元素执行
 可逆仿射变换，可写为：
 
 <div align=center>
@@ -2478,7 +2478,7 @@ Glows(《Glow: Generative flow with invertible 1x1 convolutions》)是一个著�
 
 这里的$\alpha_l>0$,$\beta_l$是一个神经网络的输出，神经网络的参数是$W$。比较容易的可以验证这个变换是可逆的，因为$\alpha_l$和$\beta_l$可以通过feed $z^{'}_ {1:D/2}}$在神经网路中被计算出来。矩阵乘法（又名“1x1的卷积”）在仿射变换中可以看作是permutation operation的推广，确保所有输入元素通过流接收多个非线性变换。
 
-大部分的TTS中的normalising flows的使用都基于Glow，Glow-TTS引入了全局仿射变换的更具参数效率的变体。由于Glow和
+大部分的TTS中的normalizing flows的使用都基于Glow，Glow-TTS引入了全局仿射变换的更具参数效率的变体。由于Glow和
 Glow TTS在耦合层中使用CNN，由此产生的可逆神经网络具有有限的感受野。因此它不能捕获声学之间的全局依赖性，
 这可能解释了许多经过训练的Glow TTS系统产生的独特的话语水平语调和强调模式。在我们的模型中source distribution $Z_t$依赖于所有之前的$Z_{1:t-1}$,通过neural HMM中的自回归（以及具有长期记忆的LSTM），可能产生更具全局一致性的合成语音。
 
@@ -2500,7 +2500,7 @@ Glow TTS在耦合层中使用CNN，由此产生的可逆神经网络具有有限
 
 #### 5.结论
 
-我们描述了如何在neural HMM架构中结合normalising flows(通过invertible post-net)定义了一个强大的该类别模型对durations和acoustics进行建模。构建了一个neural transfucer 包含normalising flows.我们的模型学习发音更准确，或得了更强的主观自然度评级。未来的工作我们将尝试更强的模型比如Transformer，多说话人合成，在更具有挑战性的数据集上比如自然口语上进行应用。
+我们描述了如何在neural HMM架构中结合normalizing flows(通过invertible post-net)定义了一个强大的该类别模型对durations和acoustics进行建模。构建了一个neural transfucer 包含normalizing flows.我们的模型学习发音更准确，或得了更强的主观自然度评级。未来的工作我们将尝试更强的模型比如Transformer，多说话人合成，在更具有挑战性的数据集上比如自然口语上进行应用。
 
 ------
 
@@ -2643,14 +2643,14 @@ speech utilizing attention-based variable-length embeddi》）模型提出的结
 
 #### Abstract
 
-本文介绍了一种并行的端到端的TTS模型，该模型基于normalising flows。它扩展了先前的并行方法，将语音节奏（speech rhythm)额外建模为单独的生成分布，以促进推理过程中的可变token的duration。我们进一步提出了一个用于语音-文本对齐是我在线提取的稳健框架——这是端到端TTS框架中一个关键但高度不稳定的学习问题。我们的实验表明，与受控基线相比，我们提出的技术产生了更好的对齐质量和更好的输出多样性。
+本文介绍了一种并行的端到端的TTS模型，该模型基于normalizing flows。它扩展了先前的并行方法，将语音节奏（speech rhythm)额外建模为单独的生成分布，以促进推理过程中的可变token的duration。我们进一步提出了一个用于语音-文本对齐是我在线提取的稳健框架——这是端到端TTS框架中一个关键但高度不稳定的学习问题。我们的实验表明，与受控基线相比，我们提出的技术产生了更好的对齐质量和更好的输出多样性。
 
 #### 1.Introduction
 
 虽然语音合成是以完全自回归的方式最自然地按顺序建模的，但训练和推理速度与序列长度的关系很差。此外，在完全自回归模型中，单个预测不佳的音频帧可能会灾难性地影响所有后续的推断步骤，从而禁止其用于推断长序列。最近的工作提出了越来越多的并行解决方案来解决这些问题。他们首先确定输入文本中每个音素的持续时间，然后使用生成的并行架构并行而非顺序地对每个mel声谱图帧进行采样和解码。然而，并行体系结构本身也存在挑战。以下工作提出了RAD-TTS：一种文本到语音（TTS）框架，具有强大的对齐学习和多样化的合成功能。**我们提出了一个稳定且无监督的对齐学习框架，适用于几乎任何TTS框架，以及一个生成音素持续时间模型，以确保并行TTS架构中的多样输出。**
 
 无监督的音频-文本对齐的学习是困难的，特别是在并行架构中。有些模型使用了现成的强制对齐器。而其他人则选择从自回归模型中提取注意力（或强制
-aligner）在昂贵的两阶段过程中转换成并行架构，这使得训练更加昂贵。从外部对齐器获得对齐具有严重的局限性，因为它需要为每种语言和字母表找到或训练一个外部对齐器，并且需要近乎完美的文本规范化。和我们的工作相关的是Glow-TTS,它在normalising flows框架中提供了一个对齐机制。我们的工作拓展了它的对齐，使其可以推广到任何TTS框架，并提高了稳定性。
+aligner）在昂贵的两阶段过程中转换成并行架构，这使得训练更加昂贵。从外部对齐器获得对齐具有严重的局限性，因为它需要为每种语言和字母表找到或训练一个外部对齐器，并且需要近乎完美的文本规范化。和我们的工作相关的是Glow-TTS,它在normalizing flows框架中提供了一个对齐机制。我们的工作拓展了它的对齐，使其可以推广到任何TTS框架，并提高了稳定性。
 
 我们进一步解决了并行TTS架构中有限的合成多样性问题。这些架构首先确定每个音素的持续时间。然后，并行架构将基于预测的持续时间在时间上复制音素映射到相应的Mel声谱图帧。即使后一种并行架构是生成的，音素预测通常也是确定性的。**这限制了输出的多样性，因为许多可变性取决于讲话节奏（speech rhythm)**。即使是基于流的模型，如Glow-TTS，也使用确定性回归模型来推断持续时间。因此，我们建议仅对token持续时间使用单独的生成模型。我们的结果表明，与固定持续时间的基线相比，推断结果更加多样化。
 
@@ -2683,7 +2683,7 @@ $$P(X,A|\Phi,\varepsilon) = P_{mel}(X|\Phi,\varepsilon,A)P_{dur}(A|\Phi,\varepsi
 
 ##### 2.1 Normalizing Flows
 
-我们首先概述normalising flows,TTS中其应用在mel-decoding中。$p_X(x)$表示每个mel-frame帧的位置的对数似然函数（简洁起见$P_{mel}$省略了条件概率中的条件）。我们期望建模每个时间步$x\in X$的抽样分布是独立同分布的标准准态分布。为了达到目的，我们拟合了一个可逆的函数$g$,使得$z=g^{-1}(x)$,$z\sim N(0,1)$.使用变量变化函数：
+我们首先概述normalizing flows,TTS中其应用在mel-decoding中。$p_X(x)$表示每个mel-frame帧的位置的对数似然函数（简洁起见$P_{mel}$省略了条件概率中的条件）。我们期望建模每个时间步$x\in X$的抽样分布是独立同分布的标准准态分布。为了达到目的，我们拟合了一个可逆的函数$g$,使得$z=g^{-1}(x)$,$z\sim N(0,1)$.使用变量变化函数：
 
 $$p_X(x)=p_Z(z)|detJ(g(z))|^{-1}$$
 
@@ -2750,12 +2750,12 @@ networks with guided attention》中使用的引导注意力损失（guided atte
 
 由于Viterbi算法是不可微的，以$A_{hard}为条件训练$g$将意味着对齐学习注意力机制将不会从$g$接收梯度。与（《A generative
 flow for text-to-speech via monotonic alignment
-search》）类似，我们通过最小化他们的KL散度，进一步强调$A_{soft}尽可能多地匹配$A_{hard}$:
+search》）类似，我们通过最小化他们的KL散度，进一步强调$A_{soft}$尽可能多地匹配$A_{hard}$:
 $$L_{bin}=A_{hard}\bigodot logA_{soft}$$
 
 ##### 2.3 Generative Duration Modeling $P_{dur}$
 
-近期的并行的TTS架构使用确定性的回归模型来预测lexical unit的duration，这导致在推断的过程中比生成式的自回归模型的多样性差，其中持续时间与其他语音特征一起被联合采样。我们通过单独的normalising flows模型来解决这个问题，该模型仅用于建模$P_{dur}()$。它可以使用另一个完全并行的bi-partite flow来构建或者自回归的flow类似于《Flowtron:
+近期的并行的TTS架构使用确定性的回归模型来预测lexical unit的duration，这导致在推断的过程中比生成式的自回归模型的多样性差，其中持续时间与其他语音特征一起被联合采样。我们通过单独的normalizing flows模型来解决这个问题，该模型仅用于建模$P_{dur}()$。它可以使用另一个完全并行的bi-partite flow来构建或者自回归的flow类似于《Flowtron:
 an autoregressive flow-based generative network for textto-
 speech synthesis》
 
@@ -2812,7 +2812,7 @@ has converged and its weights frozen.
 大部分的基于深度学习的TTS包含2个部分，第一部分是声学模型：将文本转化为声学特征比如Mel-Spectrogram；第二部分是声码器：将声学特征转化为声波。这篇paper关注声学模型。
 
 这些年因为深度学习原因TTS备受关注。现代的TTS可以分成2类：自回归（AR）模型和非AR模型。AR模型通过按顺序将输出分布分解为条件分布的乘积提高生成质量。AR模型的例子比如Tacotron2，Transformer-TTS等可以生成很自然的语音，但是推断速度会随着mel-spectrogram的长度增加推断时间线性增加。此外AR模型存在缺陷比如跳词或重复合成。最近非AR的模型用以克服AR模型的缺陷比如Flowtron,《Non-autoregressive
-neural text-to-speech》，FastPitch,《End-to-end adversarial text-to-speech》。即使非AR模型可以合成稳定的语音并且合成速度较AR模型更快，但是依然有限制。比如一些feed-farward的模型FastSpeech1,2和SpeedySpeech不能合产生多样性的合成语音（diverse synthetic speech），因为他们使用了简单的回归损失函数而没有添加任何概率模型。另外，基于flow的模型比如Flow-TTS,Glow-TTS由于强加在基于normalising flow-based的模型上的体系结构约束，参数效率低下。
+neural text-to-speech》，FastPitch,《End-to-end adversarial text-to-speech》。即使非AR模型可以合成稳定的语音并且合成速度较AR模型更快，但是依然有限制。比如一些feed-farward的模型FastSpeech1,2和SpeedySpeech不能合产生多样性的合成语音（diverse synthetic speech），因为他们使用了简单的回归损失函数而没有添加任何概率模型。另外，基于flow的模型比如Flow-TTS,Glow-TTS由于强加在基于normalizing flow-based的模型上的体系结构约束，参数效率低下。
 
 同时，denoising diffusion模型作为生成式的模型已在图像生成和raw audio synthesis中取得成功。denoising diffusion模型基于极大似然损失可以得到稳定的优化，同时享有架构选择的自由。
 
@@ -2933,7 +2933,7 @@ Diff-TTS的在$\gamma=57$时，RTF仅为0.035。可以达到实时识别的28倍
 
 ------
 
-### 15. Grad-TTS
+### 15. Grad-TTS: A Diffusion Probabilistic Model for Text-to-Speech
 
 !> https://arxiv.org/abs/2105.06337
 
@@ -2942,9 +2942,270 @@ Diff-TTS的在$\gamma=57$时，RTF仅为0.035。可以达到实时识别的28倍
 !> 这是华为2021年的工作,2022年华为发表了 Fast Grad-TTS,清华大学实现了LightGrad-TTS
 
 
+#### Abstract
+
+最近，去噪扩散概率模型和generative score matching在建模复杂数据分布方面显示出很高的潜力
+而stochastic calculus为这些技术提供了统一的观点，从而允许灵活的推理方案。这篇paper中介绍了Grad-TTS,一个新颖的TTS模型，将传统的扩散概率模型推广到具有不同参数的噪声中重建数据的情况，并允许通过明确控制声音质量和推理速度之间的权衡来使这这种重建变的灵活。主观的人类评估显示Grad-TTS在MOS指标评估中达到SOTA,代码push在：<https://github.com/huawei-noah/Speech-Backbones/tree/main/Grad-TTS>
+
+#### 1.Introduction
+
+深度生成模型被证明在很多机器学习领域是有效的。现代TTS一般包含2部分：第一部分输入文本输出时间-频率域上的声学特征（特征生成器，声学模型），第二部分是基于声学特征生成声波（声码器）。传统的SOTA的自回归的模型包括Tacotron2+WaveNet,也有使用GAN作为生成模型的架构，Normalizing Flows(《Variational inference with normalizing flows》)等并行生成有质量的云合成。
+
+Vocoder部分包括2016年的WaveNet,之后出现了很多并行的非自回归的声码器，用来合成高质量的语音。著名的Normalizing Flows比如Parallel WaveNet,Wave-Glow这些在保证合成质量的前体下加速合成速度。最后，parallel GAN-based的声码器比如Parallel Wave-GAN,MelGAN.HiFiGAN均比WaveNet更强。
+
+对于特征生成器（声学模型），Tacotron2,Transformer-TTS可以合成高质量的语音。一帧帧的产生声学特征，大部分都是基于input的文本生成mel-spectrogram. 尽管如此，他们受限于计算速度和因attention失败导致的发音错误问题。针对于这些问题，FastSpeech,Parallel Tacotron 等提高了推断速度，发音的稳健性使用非自回归的方式构建强的单调的对齐等。但是，为了学习duration,他们依然需要一个预计算的教师对齐模型。最后最近的Non-Attention Tacotron（2020）架构通过VAE的思想直接学习duration。
+
+Glow-TTS特征生成器基于Normalizing Flows是一个相对比较成功的试图解决发音错误和计算延时的自回归的解决办法。Glow-TTS使用单调对齐搜索算法（Monotonic Alignment
+Search algorithm）试图高效的得到text和mel-spectrogram的对齐。这种对齐方式试图解决Tacotron2存在的发音问题。为了可以并行合成语音，Glow-TTS借鉴了Transformer-TTS中的encoder结构以及Glow的decoder结构。因此，对比Tacotron2, Glow-TTS有更快的推理速度和更少的对齐错误。其他的并行的TTS方案FastSpeech对比，Glow-TTS不需要额外的对齐器，可以通过MAS这种非监督的方式得到token的duration。
+
+晚一些，另一个生成模型的家族是Diffusion Probabilistuc Models(DPMs)(《Deep Unsupervised Learning using Nonequilibrium Thermodynamics》)
+在images,shapes,graphs,handwriting等方面证实了其能力。DPMs的原理如下：
+
++ **构建forward diffusion process通过迭代的破坏原始图像得到一些抽样分布（一般是标准的正态分布）**
++ **构建reverse diffusion 参数化为一个神经网络模型，他遵循forward diffusion process的逆过程**
+
+随机分析（Stochastic calculus)提供了简单的训练DPMs的框架，并提供了一些基于数值微分方程求解器的采样过程。
+
+作为TTS,有2个基于DPMs的Vocoder令人印象深刻：WareGrad和DiffWave。尽管在Vocoder中取得了成功，但是在特征生成器领域（声学模型）至今没有基于diffusion probabilistic modelling的方法出现。
+
+本文介绍Grad-TTS,一个声学特征生成器，with a score-based decoder using recent diffusion probabilistic modelling insights（不知道啥是score-based decoder!)。在Grad-TTS中，MAS对齐编码器输出被传入decoder,decoder将高斯噪声通过参数化的模型将output转化为mel-spectrogram。为了处理从具有不同参数的高斯噪声中重建数据的任务，我们推广了传统的forward和reverse diffusions。Grad-TTS的代表性的特征是提供了一个mel-spectrogram输出质量与推断速度的trade-off的显式控制。我们发现Grad-TTS可以在很少的reverse diffusion 时间步上得到高质量的mel-spectrogram，这比Tacotron2效果更好。此外，我们可以通过Grad-TTS的训练得到端到端的TTS pipeline(即声学模型和声码器合并为一个单一的模型)。
+
+#### 2.Diffusion probabilistic modelling
+
+不严谨的说，diffusion的过程是一种随机过程，满足随机微分方程（SDE）
+$$dX_t=b(X_t,t)dt+a(X_t,t)dW_t$$
+这里的$W_t$是标准的布朗运动，$t\in [0,T]$,系数$b,a$分别叫做shift和diffusion相关的参数，满足可测条件（概率和测度中可测空间的概念）。扩散模型过程的严格定义和一些随机分析概念可以在《Statistics of Random Processes》中学习。
+
+可以非常容易的找到一个随机过程使得最终的分布$Law(X_T)$收敛到标准正太分布$N(0,I)$,初始的数据分布$Law(X_0)$。事实上有很多这样的随机过程，我们将在下面章节介绍。具有这种性质的任何diffusion type的过程都被称为forward diffusion，diffusion probabilistic建模的目标是找到reverse diffusion，使其轨迹与forward diffusion的轨迹密切一致，但时间顺序相反。当然，这比从数据中添加高斯噪声要困难得多，但在许多情况下，如果我们用适当的神经网络参数化reverse diffusion,他是可以实现的。这种情况下，生成归结为对随机噪声进行采样，然后用任何数值求解器仅求解描述反向扩散动力学的SDE
+（通常使用简单的一阶Euler Maruyama公式）。（涉及到随机微分方程的求解！）如果正向和反向扩散过程具有接近的轨迹，则所得样本的分布将非常接近数据$Law(X_0)$的分布,如下图所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/15/p1.png" /> 
+</div>
+
+直到最近，score-based和去噪的扩散概率模型用马尔可夫链形式化的（《Improved Techniques for Training
+Score-Based Generative Models》）。Song等人引入的一种统一方法。（2021）已经证明，这些马尔可夫链实际上近似于满足某些SDE的随机过程的轨迹。在我们的工作中，我们遵循这篇paper(《Score-Based Generative Modeling through Stochastic Differential Equations》)，并基于SDE而不是马尔可夫链来定义我们的DPM。在section 3中可以看到，我们正在解决的任务建议将《Score-Based Generative Modeling through Stochastic Differential Equations》中描述的DPM推广为这样一种方式，即对于无限时域，前向扩散将任何数据分布转换为$N(\mu,\Sigma)$而不是$N(0,I)$，接下来将详细介绍推广的forward diffusion和reverse diffusion。
+
+##### 2.1 Forward diffusion
+
+首先我们定义forward diffusion过程，将任何数据变换为高斯噪声在给定$T$时。如果$n$维的随机过程$X_t$满足如下SDE(随机微分方程):
+
+<div align=center>
+    <img src="zh-cn/img/ch3/15/p2.png" width=30% /> 
+</div>
+
+对应非负的函数$\beta_t$，我们成为噪声schedule,向量$\mu$和对角矩阵$\Sigma$都是正值，则其解如果存在写为：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/15/p3.png" width=35% /> 
+</div>
+
+注意这里的指数作用在对角阵上表示逐元素取指数。令：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/15/p4.png" width=35% /> 
+</div>
+
+<div align=center>
+    <img src="zh-cn/img/ch3/15/p5.png" width=30% /> 
+</div>
+
+由$It\hat{o}$积分条件分布的性质，给定$X_0$下$X_t$的分布是高斯分布：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/15/p6.png" width=30% /> 
+</div>
+
+这意味着如果时间趋于无穷，对于任何的$\beta_t$都有$lim_{t\rightarrow \infty }e^{-\int ^{t}_ {0}\beta_sds}$
+
+<div align=center>
+    <img src="zh-cn/img/ch3/15/p7.png" width=20% /> 
+</div>
+
+因此随机变量$X_t$收敛到分布$N(\mu,\Sigma)$与$X_0$是独立的。这正是我们所需要的性质：forward diffusion 满足SDE((2)式)将任何的数据分布$Law(X_0)$变换到高斯噪声$N(\mu,\Sigma)$。
+
+##### 2.2 Reverse diffusion
+
+虽然在早期关于DPMs的工作中，反向扩散被训练为近似正向扩散的轨迹，但Song等人（2021）提出使用Anderson（1982）的结果，Anderson导出了一类广泛的扩散型随机过程的反向时间动力学的显式公式。在我们的例子中，这个结果导致了下面的反向扩散的SDE：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/15/p8.png" width=35% /> 
+</div>
+
+这里的$\widetilde{W}_ {t}$是reverse-time的布朗运动，$p_t$随机变量$X_t$的概率分布。这个SDE的解从后向开始于最终的$X_T$。
+
+更一般的，《Score-Based Generative Modeling through Stochastic Differential Equations》中替代SDE公式(8),我们可以考虑一个常微分方程：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/15/p9.png" width=30% /> 
+</div>
+
+对应于公式（2）和公式（9）的前向Kolmogorov方程是相同的，这意味着，公式（2）和（9）的概率密度函数的演化是相同的。
+
+因此，如果我们有一个神经网络$s_{\theta}(X_t,t)$估计噪声数据log-density的梯度$\nabla log p_{t}(X_t)$, 进一步的建模数据分布$Law(X_0)$通过采样$X_T \sim N(\mu,\Sigma)$数值求解公式（8）或（9）的backwards。
+
+##### 2.3 Loss function
+
+估计带噪声的数据$X_t$的log-density的梯度通常被称为**score matching**,在一些paper中，通常使用神经网络，$L_2$ loss来近似这些梯度。我们采用改种类型的loss。
+
+基于公式（6）给定$X_0$我们直接可以采样$X_t$，而不需要先采样$\\{X_s\\}_ {s<t}$。更一般的，$Law(X_t|X_0)$是高斯分布，其log-density会简化为一个简洁的形式。如果我们采样$\varepsilon_{t}$从$N(0,\lambda(\Sigma,t))$中，则：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/15/p10.png" width=30% /> 
+</div>
+
+按照公司（6），噪声数据$X_t$的log-density的梯度为：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/15/p11.png" width=30% /> 
+</div>
+
+其中$p_{0t}(.|X_0)$条件分布公式(6)的概率密度函数。因此，与估计被时间$t$累积的噪声破坏的数据$X_0$的对数密度的梯度相对应的损失函数是：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/15/p12.png" width=30% /> 
+</div>
+
+这里的$\varepsilon_{t}$是在$N(0,\lambda(\Sigma,t))$，$X_t$由公式（10）计算。
+
+#### 3.Grad-TTS
+
+声学特征生成器（声学模型）包含3个模块：encoder,duration predictor,decoder。这一节我们描述详细的架构以及训练和推断的过程，其结构如下图所示。Grad-TTS与Glow-TTS很相似，特征生成器基于Normalizing Flows。 关键区别在于解码器所依赖的原理。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/15/p13.png"  /> 
+</div>
+
+##### 3.1 Inference
+
+Input是$x_{1:L}$可以是长度为$L$的文本或音素，我们的目标是生成mel-spectrogram $y_{1:F}$,这里的$F$是声学帧的帧数。在Grad-TTS中，encoder将input的文本序列$x_{1:L}$表示成$\tilde{\mu}_ {1:L}$使用duration predictor产生强单调对齐 $A$是编码的文本序列$\tilde{\mu}_ {1:L}$与逐帧的特征$\mu_{1:F}$之间的对齐。$A$是一个单调映射，$[1,F]\cap N$到$[1,L]\cap N$，$\mu_j=\tilde{\mu}_ {A(j)}$,对任意的整数$j\in [1,F]$。 非正式的说，duration predictor告诉我们一个文本元素对应多少个声学帧。单调的对齐保证了文本的发音是按正确顺序的并且没有跳字的情况。有duration predictor的TTS系统，可以通过将预测的持续时间乘以某个因子来控制合成语音节奏。
+
+输出的序列$\mu=\mu_{1:F}$被送入deocder,decoder是一个Diffusion Probabilistic Model。神经网络$s_{\theta}(X_t,\mu,t)$的参数是$\theta$定义一个常微分方程(ODE)
+
+<div align=center>
+    <img src="zh-cn/img/ch3/15/p14.png" width=30% /> 
+</div>
+
+which is solved backwards in time using the first-order Euler scheme。序列$\mu$同时被用来定义最后的条件分布$X_T\sim N(\mu,I)$,Noise Schedule $\beta_t$以及$T$是预先定义好的一些超参数。同时step size $h$在**Euler scheme**中也是一个超参数，可以在模型训练完成后选择。他反应了语音合成质量和合成速度的trade-off。
+
+reverse diffusion根据公式(13)迭代，原因如下：
++ 我们用公式（9）替换公式（8）得到了更好的结果在实践中：对于较小的step size $h$它们的表现同样出色，而对于更大的值，前者会带来更好的结果。
++ 我们为了简化，$\Sigma=I$
++ 我们把$\mu$作为神经网络$s_{\theta}(X_t,\mu,t)$的输入。遵循公式（11）神经网络$s_{\theta}$尝试预测高斯噪声添加到$X_0$,仅观察有噪声的数据$X_t$。因此，在每一个时间步$t$,我们在神经网络$s_{\theta}$中添加了额外的关于$lim_{t \rightarrow \infty}Law(X_T|X_0)$的形式的知识（注意不同的input text该输入是不同的），这样网络在预测$t$步的噪声时会更准确。
+
+我们发现引入一个温度$\tau$在$N(0,\tau^{-1}I)$采样$X_T$而不是在$N(0,I)$中采样会更好。在使用大的step size $h$时，调整$tau$可以使语音合成的质量变的更好。
+
+##### 3.2 Training
+
+Grad-TTS模型训练的其中一个目标是最小化aligned encoder 输出$\mu$和目标mel-spectrogram $y$之间的距离，因为inference scheme仅仅从$N(0,I)$的随机噪声中开始解码。直觉上，从噪音中解码是简单的。
+
+如果aligned encoder 输出$\mu$被认为参数化解码器开始的输入噪声，很自然的考虑编码器的输出$\tilde{\mu}$为正态分布$N(\tilde{\mu},I)$,其目标函数为负对数似然：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/15/p15.png" width=30% /> 
+</div>
+
+这里的$\varphi(\cdot;\tilde{\mu}_ {i},I)$是$N(\tilde{\mu}_ {i},I)$的概率密度函数。尽管其他类型的损失也是可能的，但由于这种概率解释，我们选择了$L_{enc}$（它实际上减少到均方误差标准）。 原则上，甚至可以在完全没有任何编码器损失的情况下训练Grad-TTS，并让进一步描述的扩散损失完成生成真实mel-spectrogram的所有工作,但是实际上我们观察缺少了$L_{enc}$,Grad-TTS无法学习到对齐信息。
+
+编码器的损失$L_{enc}$必须针对于encoder的参数和对齐函数$A$进行优化。因为很难进行联合优化，我们采用迭代的方法，参考（《Glow-TTS: A
+Generative Flow for Text-to-Speech via Monotonic Alignment Search》）。每一次的迭代优化包括两步：
+
+1. 给定encoder的参数，搜寻一个最优的对齐$A^{* }$;
+2. 固定这个对齐$A^{* }$,进行一步随机梯度下降优化encoder的参数。
+
+我们使用MAS(Monotonic Alignment Search)在第一步中。MAS使用动态规划（from the point of
+view of loss function $L_{enc}$)找到最优的单调对齐。该对齐方法参考Glow-TTS。
+
+在推断阶段估计最优的对齐$A^{* }$，Grad-TTS使用duration predictor network。就像Glow-TTS一样我们训练duration predictor(DP) 网络使用MSE在对数域中：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/15/p16.png" width=30% /> 
+</div>
+
+这里的$I$是示性函数，$\tilde{\mu}=\tilde{\mu}_ {1:L},d=d_{1:L}$,停止梯度（stop gradient)操作$sg[\cdot]$被施加到持续时间预测器的输入以防止$L_{dp}$影响编码器参数。
+
+DPM相关的损失的计算参考section 2,这里$\Sigma=I$,公式（6）被简化，
+
+<div align=center>
+    <img src="zh-cn/img/ch3/15/p17.png" width=30% /> 
+</div>
+
+总体扩散损失函数$L_{diff}$是与估计不同时间$t\in [0,T]$的噪声数据的对数密度的梯度相关联的加权损失的期望:
+
+<div align=center>
+    <img src="zh-cn/img/ch3/15/p18.png" width=30% /> 
+</div>
+
+这里的$X_0$代表从训练数据采样的目标mel-spectrogram  $y$。$t$是从均匀分布$[0,T]$的采样。$\xi$服从$N(0,I)$,
+
+<div align=center>
+    <img src="zh-cn/img/ch3/15/p19.png" width=30% /> 
+</div>
+
+如公式（6）获取带噪声的数据$X_t$,上面的（17）（18）式对应（12）和（10）式，通过替换$\epsilon=\sqrt{\lambda_t}\xi_t$。我们使用重量为$\lambda_t$的损失（12）根据常见的启发式方法，这些权重应该与$1/E[|| \nabla logp_{0t}(X_t|X_0)||^2_2]$成比例。
+
+综上所述，训练过程的步骤如下：
++ 固定encoder,duration predictor和decoder的参数，运行MSA算法，找到对齐$A^{* }$使得$L_{enc}$最小
++ 固定$A^{* }$最小化$L_{enc}+L_{dp}+L_{diff}$分别更新encoder,duration predictor,decoder的参数
++ 重复前两步的操作，直到收敛
+
+##### 3.3 Model architecture
+
+对于encoder和duration predictor,我们的结构和Glow-TTS相同，Glow-TTS的结构借鉴了Transformer-TTS和FastSpeech。duration predictor包括2个卷积层后跟一个投影层(projection layer)用来预测对数尺度的duration。encoder包含一个pre-net,6个Transformer blocks（multi-head self-attention)以及一个线性投影层。pre-net包含3层卷积接全连接层。
+
+decoder网络$s_{\theta}$为U-Net架构生成$32\times 32$的图像，除了我们使用更少两倍的通道和三个特征图分辨率而不是四个来减小模型大小之外。我们的试验中使用80维的mel-spectrogram，因此$s_{\theta}$按分辨率$80\times F,40\times F/2,20\times F/4$操作。如果mel-spectrogram的frame的帧数$F$不能被4整除就用0填充。Aligned encoder的输出$\mu$和U-Net的input $X_t$进行concat作为额外的channel。
+
+#### 4.Experiments
+
+训练数据使用LJSpeech包含24小时的女性英文语音标注，test数据是500个短的音频（一般是<10s),使用80维的mel-spectrogram作为声学特征输出，我们发现使用原始的mel-spectrogram要比normalized mel-spectrogram要好。训练了1.7m次，batch size=16,单GPU(NVIDIA RTX 2080Ti 11G),Adam作为优化器，学习率为0.0001。
+
+其他参数说明：
++ $T=1,\beta_t=\beta_0+(\beta_1-\beta_0)t,\beta_0=0.05,\beta_1=20$
++ 我们使用固定长度（在我们的情况下为2秒）的随机mel-spectrogram片段作为训练目标$y$，以实现记忆高效训练。然而，MAS和持续时间预测器仍然使用全mel-spectrogram
++ 开始的时候$L_{diff}$收敛的很慢，经过长时间的训练，神经网络$s_{\theta}$可以准确的估计所有$t\in [0,1]$的梯度。两个diffusion loss相同的模型生成的语音质量可能不一样：inaccurate
+predictions for a small subset $S \subset [0; 1]$ may have a
+small impact on $L_{diff}$ but be crucial for the output melspectrogram
+quality if ODE solver involves calculating
+$s_{\theta}$ in at least one point belonging to $S$(这句不是很好翻译！)
+
+Grad-TTS可以trade-off合成质量和合成速度，推断时通过解ODE(公式（13)）的迭代次数$N$，这里我们取$N \in[4,10,100,1000]$,$\tau=1.5$,对比了Glow-TTS,FastSpeech,Tacotron2,我们使用预训练的HiFiGAN作为声码器。
+
+**主观评价**:使用MOS评分如下图所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/15/p20.png"  /> 
+</div>
+
+Grad-TTS-10速度快，质量好，$N$越大，合成语音质量越好，$N=1000$时合成的语音质量已经接近于Ground Truth了。
+
+**合成速度**:如下图所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/15/p21.png"  /> 
+</div>
+
+评价指标是RTF,decoder的step小于100，$RTF<0.37$,其速度和Glow-TTS,FastSpeech相当，是Tacotron2的2倍。$N=10$的时候是一个很好的trade-off。此外Grad-TTS有15m的参数，比其他的声学模型小。
+
+**end-to-end TTS**: 我们的实验显示可以将该结构改为end-to-end的TTS。简而言之，我们在Grad-TTS解码器中从U-Net转移到WaveGrad，总体结构类似于WaveGrad conditioned on the aligned encoder output $\mu$  instead of ground truth mel-spectrograms $y$ as in original WaveGrad.尽管合成语音质量足够公平但不能与上述结果相竞争，因此，我们在听力测试中不包括端到端模型，而是在<https://grad-tts.github.io/>中提供演示样本。 （说白了端到端的效果不是很行！）
+
+#### 5.Future work
+
+上述端到端语音合成结果表明，它是文本到语音应用的一个很有前途的研究方向。然而，也有很大的空间来研究有关DPM的一般问题。
+
+在section 2的分析中我们假定forward和reverse diffusion process是存在的即公式（2）和（8）是有解的。$\beta_t$使用了Lipschitz限制，这些读神经网络$s_{\theta}$都是很重要的假设。Wasserstein GANs提供了一个令人鼓舞的例子，将Lipschitz约束纳入神经网络训练中（《Improved Training ofWasserstein GANs》），表明类似的技术可以改善DPM。
+
+到目前为止，人们很少注意noise schedule $\beta_t$的选择-大部分都使用了一个线性的schedule。同样的，如何在时间$t$在全局的loss中选择loss(公式（12）)所占的权重也是不明确的。对这些实际问题的彻底调查至关重要，因为它可以促进将DPM应用于新的机器学习问题。
+
+#### 6.Conclusion
+
+我们介绍了Grad-TTS是第一个使用diffusion probabilistic modeling的声学模型。Grad-TTS中最主要的是使用了diffusion-based的decoder将高斯噪声转换为mel-spectrogram，同时使用MAS（Monotonic Alignment
+Search）对齐方式。推断时decoder的步数是可以调整的，提供了一种方式实现推断速度和合成质量的trade-off。虽然是迭代的decoding ,但是Grad-TTS依然是实时的。进一步的，在合成质量保持在基线位置时，Grad-TTS合成mel-spectrogram的速度是Tacotron2的2倍。
+
+------
+
 <!-- other -->
 
-### 16. Align-TTS
+### 16. Align-TTS：Efficient Feed-Forward Text-to-Speech System without Explict Alignment
 
 !> https://arxiv.org/abs/2003.01950
 <!-- https://zhuanlan.zhihu.com/p/344775317 -->
