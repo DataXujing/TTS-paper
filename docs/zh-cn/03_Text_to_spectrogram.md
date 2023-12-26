@@ -33,9 +33,10 @@
 | Diff-TTS |Diffusion Model | 
 | Grad-TTS |Diffusion Model | 
 | Align-TTS |Other | 
-| Capacitron |Other | 
 | Delightfull TTS |Other | 
 | Mixer_TTS/TTS-x |Other | 
+
+<!-- | Capacitron |Other |  -->
 
 </div>
 
@@ -3327,21 +3328,113 @@ input character sequence经过embedding，经过FFT前半部分得到hidden feat
 
 ------
 
-### 17. Capacitron
+<!-- ### 17. Capacitron
 
 !> https://arxiv.org/abs/1906.03402
+ -->
 
-
-
-
-### 18. Delightful TTS
+### 17. Delightful TTS：The Microsoft Speech Synthesis System for Blizzard Challenge 2021
 
 !> https://arxiv.org/abs/2110.12612
 
+!> <https://www.synsig.org/index.php/Blizzard_Challenge>
 
+!> <https://cognitivespeech.github.io/delightfultts>
 
+!>  DelightfulTTS 2: End-to-End Speech Synthesis with Adversarial Vector-Quantized Auto-Encoders
 
-### 19. Mixer_TTS/Mixer-TTS-x
+<!-- https://zhuanlan.zhihu.com/p/431562085 -->
+
+本文是微软在2021.10.25更新的文章，主要是参加Blizzard Challenge 2021大赛的方案，但该方案在MOS和SMOS非常出众。
+
+#### 1.简介
+
+Blizzard Challenge 大赛主要为TTS领域提供交流的赛事，更好突出当前最优的TTS方案。Blizzard Challenge2021主要提供5小时的西班牙语的训练语料，本文在FastSpeech和Adaspeech基础上提出了DelightfulTTS，该系统在参赛的队伍中脱颖而出，其合成的语音质量媲美原始语音。另外除了官方提供的5小时训练语料，微软还是使用公司具有的80小时西班牙语料训练基础模型(作为比赛这就有点耍赖了），这是其他队伍所不具备的优势条件。结果显示，本文的方案在MOS和SMOS表现突出，媲美原始语音。
+
+#### 2.详细设计
+
+<div align=center>
+    <img src="zh-cn/img/ch3/17/p1.png"  /> 
+</div>
+
+本文的方案是在FastSpeech和Adaspeech基础上设计的方案，具体如上图所示。该方案具有以下特点:
+
+1. 声学模型训练16kHZ的mel-spectrogram,声码器使用16kHZ特征来生成48kHz的波形，该声码器使用HiFiNet; 
+2. 声学模型使用功更多特征:
+
+TTS是一个典型的一对多映射问题，其中可能存在多个不同的语音输出（比如：不同的音高、持续时间、说话者、韵律、情绪等）。对语音中的这些变化信息进行建模至关重要，以便提高合成语音的表现力和保真度。之前的工作尝试了不同的方法，但是没有一种全面的建模的方式。在本文中，考虑到不同的变化信息可以
+相互补充，我们提出了一种统一的方法来在所提出的variance adaptor（上图(c))中对它们进行建模。观察到一些变化信息可以隐含地（implicitly）获得（比如:音高可以通过工具准确的被提出），或者是明确的（explicitly））（比如：话语级韵律（utterance-level prosody ）只能通过模型来学习）。我们将我们建模的所有信息分类如下：
++ 显式建模（Explicit modeling），包括language ID,speaker ID,Pitch,duration
++ 隐式建模(Implicit modeling),包括utterance-level,phoneme-level prosody
+
+对于speaker ID和language ID,我们在训练和推断中通过lookup embedding方式建模，对于pitch,duration,我们在训练过程中在成对的文本-语音数据中提取，并在推理中使用两个预测音子来预测值。对于utterance-level和phoneme-level prosody,我们使用两个参考编码器(reference encoders)来提取训练中的值，并使用两个独立的预测器来预测推理中的值。两个参考编码器都由卷积层和RNN层组成，通过最后一个RNN的隐藏层和一个style token layer来获取utterance-level prosody vector。通过使用音素编码器（音素级）的输出作为查询（query)来关注(attend)mel-spectrogram参考编码器（帧级）的输出来获得音素级韵律向量。我们不使用VAE，而是直接使用潜在表示（latent representation）作为音素水平向量来训练更稳定。话语级韵律（utterance-level prosody）预测器包含一个GRU层，后面跟着瓶颈模块（bottleneck module）以预测韵律向量。音素级韵律（phoneme-level prosody）预测器以文本编码器（text encoder ）的输出和话语级韵律向量（utterancelevel prosody vector）作为输入。在话语级韵律向量的帮助下，我们不需要像《Parallel tacotron: Non-autoregressive and controllable tts》那样的自回归韵律预测器来进行更快的推理。通过在variance adaptor中统一不同粒度（语言级别、说话者级别、话语级别、音素级别）variance adaptor的显性和隐性信息，我们可以在韵律上获得更好的表现力，在音高和时长上实现更好的可控性。
+
+3. 本文使用和优化conformer来替换transformer; 
+
+Conformer(《Conformer: Convolutionaugmented transformer for speech recognition》)是Transformer的一个变体合并了CNN和Transformer部分。最开始是用在ASR中的，在ASR中参数量较小的情况下取得了很好的精度，在一些开源的ASR数据集上，取得了SOTA的的效果。多头自我注意（MHSA）是整合了一个重要的来自Transformer-XL的具有相对正弦位置编码方案的技术。Conformer提出了一种新的自注意和卷积的组合，其中自注意学习全局交互，而卷积有效地捕捉局部相关性。我们认为全局和局部交互对TTS特别重要，因为它的输出序列比机器翻译
+或解码器中的语音识别要长。对于非自回归TTS模型，强大的建模单元至关重要，因为解码器中的每个帧都不能像自回归模型那样查看其历史。在我们提出的系统中，我们对原来的Conformer架构进行了一些改进：
++ 我们用ReLU代替Swish激活，并观察到更好的泛化能力，尤其是在长句上。
++ 为了更快地收敛，我们切换了自注意和深度卷积的顺序。
++ 我们用卷积层代替了Macoron结构前馈模块中的线性层，从而获得了更好的韵律和音频保真度。
+
+总之，我们改进的conformer块由堆叠在一起的四个模块组成：a convolutional feed-forward module, a depthwise convolution module,
+a self-attention module and a second convolutional feedforward module in the end，如上图中的(d)所示。
+
+4. 新使用自有和大赛提供的所有数据预训练基础模型，然后再5小时数据上进行微调；
+
+#### 3.任务描述，数据预处理和训练策略
+
+1. 任务描述
+
+比赛名称是：Blizzard Challenge 2021，提供了5个小时的音频数据，采样率为48kHz,女性，European Spanish说话人。任务目的是得到European Spanish TTS。
+
+2. 数据预处理
+
+音素被广泛用在TTS系统中，这可以根据文本上下文避免歧义。在这项任务中，我们利用了一个内部文本预处理模块，将输入的西班牙语文本转换为音素序列。（有点不要脸）
++ 首先，我们通过句子分离模块将文本分割成句子。
++ 其次，我们使用基于规则的TN模块执行文本规范化（text normalization）（TN）。
++ 第三，我们使用G2P（《Tools for the development of a hindi speech synthesis system》）模型和西班牙语词典将标准化文本转换为音素序列。
+
+对于训练阶段，我们将音频降采样到16kHz。mel-spectrogram的计算通过短时傅里叶变换（STFT）帧的大小是50ms,12.5ms帧跳，汉明窗。对于声码器的训练，使用了48kHz的原始音频训练了HiFiNet(《Azure neural tts upgraded with hifinet,achieving higher audio fidelity and faster synthesis speed》：<https://techcommunity.microsoft.com/t5/azure-ai/azure-neural-tts>)
+
+3. 训练策略
+
+Loss function:
+$$L=L_{utt}+L_{phone}+L_{putch}+L_{dur}+L_{iter}+L_{ssim}$$
+
+这里的$L_{utt}$表示预测的utterance-level prosody vector和在reference encoder中提取的utterance-level prosody vector的$L_1$ Loss;
+$L_{phone}$表示预测的phoneme-level prosody vectors和在reference encoder中提取的phoneme-level prosody vectors的$L_1$ Loss;
+$L_{pitch}/L_{dur}$是预测的pitch/duration与真实的pitch/duration的$L_1$ Loss。为了更好的收敛和合成高质量的语音，每个conformer block的输出被映射为80维的mel-spectrogram,用来评估与真实mel-spectrogram loss，$L_{iter}$是所有预测和真实的mel-spectrogram的$L_1$范数的总和；为了合成更自然的语音，我们使用SSIM(Structural SIMilarity)(《Image quality assessment: from error visibility to structural similarity》)来计算预测和真实的mel-spectrogram的结构相似度，损失表示为$L_{ssim}$。我们使用最后一个conformer block预测的mel-spectrogram作为预测的最终mel-spectrogram。我们除了使用了比赛提供的5个小时的训练数据还是用了微软内部额外的40小时的欧洲西班牙语训练数据和40小时的墨西哥西班牙语数据。声学模型和声码器均在上述全数据上进行预训练，然后在这5个小时的数据上进行微调。靠近音素和mel-spectrogram两端的conformer block的个数设置为6，attention维度是384，卷积前向模块的隐层是1536，深度可分卷积的kernel size是7，我们在4块V100上训练DelightfullTTS,每个GPU上的batch size月日6000个语音帧。
+
+#### 4.实验结果
+
+本文的方案为F，原始为R。MOS如下图所示，原始均值为4.21，F为4.17，其它参赛方案低于4。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/17/p2.png"  /> 
+</div>
+
+mean opinion score of similarity evaluation
+results for all systems scored by all listeners（SMOS）.,SMOS如下图所示，R均值为4.07，F为4.35，其它方案低于4 。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/17/p3.png"  /> 
+</div>
+
+下图是在不同数据集上句子可理解度的评价，得分跟其它队伍差不多。
+
+<div align=center>
+    <img src="zh-cn/img/ch3/17/p4.png"  /> 
+</div>
+
+#### 5.结论
+
+本文描述了微软在Blizzard Challenge 2021的语音合成系统。我们从两个方面来实现从文本中合成自然和高质量语音的目标：一是直接建模并生成48kHz采样率的波形，在任务难度方面有很好的折衷在声学模型和HiFiNet声码器之间带来了比以前的系统更高的感知质量采样率较低；二是通过系统设计对语音中的可变信息（variation information）进行建模，包括显式和隐式建模，提高了韵律和自然度。
+
+综上，MOS评价指标上F高于其他的系统，与真实的语音无显著差异；speaker similarity(SMOS)指标上F由于其他系统。未来我们将更深入将可变信息（variation information）用在建模多说话人，多语言和多风格的数据集，调查不同语言和说话者之间的风格转换能力。
+
+------
+### 18. Mixer-TTS：Non-Autoregressive, Fast and Compact Text-to-Speech Model Conditioned on Language Model Embeddings
 
 !> https://arxiv.org/abs/2110.03584
 

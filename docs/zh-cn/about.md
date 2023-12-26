@@ -37,6 +37,10 @@
 |2023-12-19           |   Diff-TTS |
 |2023-12-22           |   Grad-TTS |
 |2023-12-22           |   Align-TTS |
+|2023-12-26           |  Delightful TTS |
+
+
+
 
 
 
