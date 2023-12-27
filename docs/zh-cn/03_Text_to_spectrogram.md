@@ -3438,4 +3438,97 @@ results for all systems scored by all listeners（SMOS）.,SMOS如下图所示�
 
 !> https://arxiv.org/abs/2110.03584
 
+!> https://mixer-tts.github.io/
 
+#### 摘要
+
+本文描述了Mixer-TTS,一种non-autoregressive的mel-spectrogram生成的模型。该模型基于MLP-Mixer架构。基本的Mixer-TTS包含pitch和duration预测器，后者使用无监督TTS对齐框架进行训练。除了基本模型之外，我们提供了扩展的版本，使用了预训练的token embedding。basic Mixer-TTS和库鏖战版本的MOS分别为4.05和4.11，而原始的LJSpeech的MOS是4.27。两个版本的参数两均很小，推理速度非常快。
+
+#### 1.简介
+
+最近神经网络TTS模型大大提高了语音合成的速度，稳健性和质量。训练和推断速度的提升主要依赖于将sequential autoregressive的模型（Tacotron,WaveNet,Deep Voice 3)转换为并行的，非自回归的模型(Fast Speech1/2,FastPitch,TalkNet)。非自回归的模型在相同合成质量下比自回归模型快2个数量级。比如FastPitch比Tacotron2的生成速度快60倍。
+
+稳健的TTS模型采用了显式的(explicit) duration predictor(Deep Voice 1/2,Fast Speech1/2,FastPitch,TalkNet)消除skipping和repeating word（在Tacotron2中较常见的错误）。传统上，带有duration predictor的模型需要一个已经监督训练号的alignments。比如，TalkNet使用一个辅助的ASR模型作为alignment,FastSpeech和FastPitch的alignments来源于一个teacher TTS模型。Glow-TTS使用flow based的算法无监督的训练alignment，这个方法在RAD-TTS中被改进，并在《One TTS alignment to rule them
+all》中倍调整为非自回归模型。这些新的alignment算法简化了TTS训练的pipeline。
+
+第一个非自回归模型生成的语音质量不如最先进的自回归模型。FastPitch通过在基频(F0)中添加Pitch predictor缩短非自回归和自回归模型合成质量的gap。《Pre-Trained Text Embeddings
+for Enhanced Text-to-Speech Synthesis》提供了一个增强的TTS模型通过BERT预训练模型对input进行representation,作者假设文本embedding中word之间的重要信息，这些信息可以帮助提高语音的韵律和发音。《Improving prosody modelling with crossutterance
+bert embeddings for end-to-end speech synthesis》展示了在TTS中这些有用的上下文信息。
+
+本文我们展示了一种非自回归的声学模型Mixer-TTS。**模型的backbone基于MLP-Mixer(《MLP-Mixer: An all-MLP architecture for vision》)**，该架构来源于计算机视觉倍迁移到语音。新架构参数量比Transformer based TTS要小(Fast Speech 2,FastPitch),**我们的模型使用了显示的duration predictor,使用了无监督训练的alignment(《One TTS alignment to rule them all》)**。Mixer-TTS结合两种方法来提高语音合成的韵律。basic version的显式的duration predictor和FastPitch相似。extended version添加了额外的预训练的LM的token embedding来提高合成语音的韵律和发音。使用token embedding比《“Pre-Trained Text Embeddings
+for Enhanced Text-to-Speech Synthesis》中推断BERT输出的成本要低得多。 它们显著地提高了语音质量，模型大小和推理速度都有了适度的提高。
+
+我们使用HiFi-GAN作为Vocoder,在LJSpeech上进行实验，Mixer-TTS的MOS为4.05，原音频的MOS为4.27。 extended version使用了LM embedding的MOS为4.11。 basic version有19.2M的参数，extended version有24M。Mixer-TTS合成的样例参考<https://mixer-tts.github.io/>。
+
+#### 2.模型结构
+
+模型结构如下图所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/18/p1.png"  /> 
+</div>
+
+我们对文本进行编码在单独的模块中使用音频特征并对齐以获得GT的持续时间。然后计算character或phonenme-level的pitch value,将他们输入Length regulator模块扩展每个character或phoneme特征到对应的duration长度。然后Decoder输入encoder编码的表征生成mel-spectrogram。
+
+basic Mixer-TTS结构和FastPitch很像，主要有两个改变：
+1. 我们替换了所有的encoder和decoder中的Transformer block，使用新的Mixer-TTS block(参见subsection 2.1);
+2. 我们使用了无监督的speech-to-text的对齐架构来训练duration predictor(参见subsection 2.2)。
+
+extended Mixer-TTS额外包含了一个预训练LM的embedding(参见subsection 2.3),我们使用了FastPitch中的pitch predictor和duration predictor。
+
+模型训练的损失包含对齐损失，mel-spectrogram预测对应的MSE损失，duration和pitch损失：
+$$L=L_{aligner}+L_{mel}+0.1 \cdot L_{dur}+0.1\cdot L_{pitch}$$
+
+##### 2.1 Mixer-TTS Block
+
+MLP-Mixer架构来源于：《MLP-Mixer: An all-MLP architecture for vision》用在计算机视觉中，完全基于多层感知机(MLP)。 MLP Mixer对输入执行两个关键操作：
+**“混合”每个位置的特征和“混合”空间信息**（“mixing” the per-location features and “mixing” spatial information）。 这两个操作都是由堆叠两个MLP layer实现的。第一个MLP layer以“扩展因子”(”expansion factor”)增加channel的数量，第二个MLP layer将channel减少到原始值。然而，只有当层的输入大小由每个维度固定时，这种方法才是可能的。为了在TTS中使用该架构（此时其中一个input的维度是dynamic的），我们使用“time-mixing”，使用1D卷积代替MLP layer,借用了原来的layer进行通道“混合”。原始MLP-Mixer的其余结构保持不变，包括Layer Norm和残余连接,如下图所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/18/p2.png"  /> 
+</div>
+
+在mini-batch的训练和推断过程中，需要将序列的长度padding到最大的序列长度，我们在after MLP和depth-wise 1D Conv layers后使用了sequence masking。
+
+encoder包含6个叠加的Mixer-TTS block, time-mix的卷积核从11先21每个2线性增长。 decoder由9个叠加的Mixer-TTS block构成，卷积核从15到31有类似的操作。特征的维度是384，channel-mix的expansion factor是4，time-mix中没有expansion factor。每个block中使用了0.15的dropout。
+
+##### 2.2 Speech-to-text alignment framework
+
+大多数的非自回归的TTS模型使用duration prediction依赖于外部资源提取的duration。然而，我们的工作中，我们联合decoder使用自适应无监督对对齐算法（《One TTS alignment to rule them all》）训练speech-to-text的对齐，和FastPitch中相同。这个对齐器使用1D卷积编码text和mel-spectrogram将他们映射到相同的维度。“soft” alignment使用编码的text和mel-spectrogram的$L_2$ pair-wise的距离表示，CTC损失学习他们之间的对齐。为了得带单调的对齐（真实的duration），使用维特比算法找到最优的单调路径。更细节的描述可以参考：《One TTS alignment to rule them all》。
+
+##### 2.3 Extended Mixer-TTS
+
+extended version使用了外部语言模型的token embeddings.我们使用HuggingFace预训练的ALBERT模型，我们使用了LM的分词方法，锁定了input token的embedding。原始的和通过LM分词的text的序列长度是不同的，因为他们分词的方法不一样。为了对齐这两个序列，我们使用了单头的self-attention block 将LM的embedding $lm_{t_{emb}}$编码吗为$lm_{t_e}$,它混合了它们的特征，同时保留了“基本”文本嵌入的长度。用于自注意力对齐的文本特征是用前面有单独位置嵌入层的卷积层提取的。
+
+#### 3.结果
+
+模型在LJSpeech数据集进行训练，12500个样本用于训练，100个样本用于验证，500个样本样本用于测试。文本转成小写，同时保留了所有标点符号。我们试验了两种标记化方法：基于字符和基于音素。我们使用了CMUdict(<http://www.speech.cs.cmu.edu/cgi-bin/cmudict>)中的ARPABET 表示，用于字形到音素的转换。我么将原始22050Hz的音频通过STFT转换为mel-spectrogram,使用50ms的Hann窗，12:5ms帧跳。真实的Pitch的提取使用的是librosa package(《Librosa: Audio and music
+signal analysis in Python》) 。
+
+模型训练了1000个epoch,使用LAMB optimizer,$\beta_1=0.9,\beta_2=0.98,\epsilon=10^{-8}$,batch size=128,梯度累积是2,4块V100训练了约12个小时。
+
+消融实验如下图所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/18/p3.png"  /> 
+</div>
+
+MOS评价指标如下图所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/18/p4.png"  /> 
+</div>
+
+推断速度如下图所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch3/18/p5.png"  /> 
+</div>
+
+#### 4.结论
+
+我们提供了一种非自回归的TTS模型Mixer-TTS,encoder和decoder的架构采用了MLP-Mixer架构，并调整该架构适应dynamic shape input。模型包含pitch conditioning和duration predictor其基于一个无监督的对齐器进行训练。extended version我们使用了预训练的语言模型的token embeddings。
+
+语音合成的质量杠杠的，basic version使用HiFi-GAN Vocoder MOS为4.05，extended version(Mixer-TTS-X) MOS为4.11（真实音频的MOS为4.27）。该模型训练和推断速度很快，代码将在NeMo中开源。
+
+------

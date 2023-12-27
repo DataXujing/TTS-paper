@@ -27,18 +27,18 @@
 |2023-12-07            |  DeepVoice v3  |
 |2023-12-08            |  Speedyspeech  |
 |2023-12-08            |  TransformerTTS  |
-|2023-12-10           |  Glow-TTS  |
-|2023-12-10           |  FastSpeech  |
-|2023-12-10           |  FastSpeech 2/2s  |
-|2023-12-11           |  FastPitch  |
-|2023-12-13           |  OverFlow  |
-|2023-12-13           |   SC-GlowTTS |
-|2023-12-15           |   RAD-TTS |
-|2023-12-19           |   Diff-TTS |
-|2023-12-22           |   Grad-TTS |
-|2023-12-22           |   Align-TTS |
-|2023-12-26           |  Delightful TTS |
-
+|2023-12-10            |  Glow-TTS  |
+|2023-12-10            |  FastSpeech  |
+|2023-12-10            |  FastSpeech 2/2s  |
+|2023-12-11            |  FastPitch  |
+|2023-12-13            |  OverFlow  |
+|2023-12-13            |   SC-GlowTTS |
+|2023-12-15            |   RAD-TTS |
+|2023-12-19            |   Diff-TTS |
+|2023-12-22            |   Grad-TTS |
+|2023-12-22            |   Align-TTS |
+|2023-12-26            |  Delightful TTS |
+|2023-12-27            |  Mixer-TTS |
 
 
 
