@@ -3444,7 +3444,7 @@ results for all systems scored by all listeners（SMOS）.,SMOS如下图所示�
 
 本文描述了Mixer-TTS,一种non-autoregressive的mel-spectrogram生成的模型。该模型基于MLP-Mixer架构。基本的Mixer-TTS包含pitch和duration预测器，后者使用无监督TTS对齐框架进行训练。除了基本模型之外，我们提供了扩展的版本，使用了预训练的token embedding。basic Mixer-TTS和库鏖战版本的MOS分别为4.05和4.11，而原始的LJSpeech的MOS是4.27。两个版本的参数两均很小，推理速度非常快。
 
-#### 1.简介
+#### 1.引言
 
 最近神经网络TTS模型大大提高了语音合成的速度，稳健性和质量。训练和推断速度的提升主要依赖于将sequential autoregressive的模型（Tacotron,WaveNet,Deep Voice 3)转换为并行的，非自回归的模型(Fast Speech1/2,FastPitch,TalkNet)。非自回归的模型在相同合成质量下比自回归模型快2个数量级。比如FastPitch比Tacotron2的生成速度快60倍。
 

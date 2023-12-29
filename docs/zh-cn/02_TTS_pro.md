@@ -58,6 +58,10 @@
 
 [9]. <https://github.com/netease-youdao/EmotiVoice>
 
+[10]. <https://github.com/svc-develop-team/so-vits-svc/tree/4.1-Stable>
+
+[11]. <https://github.com/justinjohn0306/so-vits-svc-4.0>
+
 
 
 ### 3.TTS常用开源数据集

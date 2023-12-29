@@ -39,7 +39,7 @@
 |2023-12-22            |   Align-TTS |
 |2023-12-26            |  Delightful TTS |
 |2023-12-27            |  Mixer-TTS |
-
+|2023-12-29            |  MelGAN |
 
 
 
