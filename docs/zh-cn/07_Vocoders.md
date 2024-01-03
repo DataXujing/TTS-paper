@@ -319,13 +319,166 @@ Zhu, J.-Y., Park, T., Isola, P., and Efros, A. A. Unpaired image-to-image transl
 
 ------
 
-### 2. MultiBandMelGAN
+### 2. MultiBandMelGAN:Faster Waveform Generation for High-Qualty Text-to-Speech
 
 !> https://arxiv.org/abs/2005.05106
 
 <!-- https://zhuanlan.zhihu.com/p/319799626 -->
 <!-- https://zhuanlan.zhihu.com/p/350333116 -->
 
+MelGAN的结构已经在前文详细叙述了 ，该paper主要着点于针对MelGAN的一种加速优化方法，甚至在精细调参的情况下，语音合成效果还能小优于 MelGAN。
+而达到这种有效改进的核心是 **切分频段**，这里使用的方法是PQMF，通过分频段减少上采样计算量，并且针对特定频域合成，优化合成速率和质量。
+
+首先重点讲解PQMF，关于这部分资料的确较少，本文会从$z$变换开始介绍，逐步讲解PQMF的信号处理逻辑，当然，最好还是去阅读这方面原文，推荐是 《Introduction to digital audio coding and standards》 这本书的第四章。 然后基于 PQMF Multi-band MelGAN 的改进 ，比如 loss 的调整，也会在本文中叙述。
+
+#### 1.性能比较
+
+Multi-Band MelGAN 论文中，可以从下表中看出，相比于MelGAN，MB-MelGAN参数量降低了一倍多，合成速率明显加快。
+
+<div align=center>
+    <img src="zh-cn/img/ch7/02/p1.png" /> 
+</div>
+
+同时合成语音的效果，不降反升，但我觉得这其中有一定层度是取决于 **STFT loss** （也就是他们改进的loss）的作用导致的
+
+<div align=center>
+    <img src="zh-cn/img/ch7/02/p2.png" /> 
+</div>
+
+#### 2.PQMF
+
+首先在讲解分频方法 PQMF之前，我们要对为什么分频有个理解，甚至更基础的频域是用来干嘛的这一点，也需要有个实际的认识。直接说结论，频域是用来压缩语音的，并且频谱这种载体有利于编码，所以在信号领域应用广泛。最基础的频域就是傅里叶变换后得到的频域，实际是一定长度的复数向量，其中包含了功率和相位的信息。但为方便计算，把复数取模长转为实数，这个实数其实也就是能量，也就是我们常说的频谱（一般还有log计算，正则化数量级）。这其实也就是Vocoder存在的最大意义，如何把能量谱还原回去。
+
+频谱中的每一维能量实际是一一对应一个频率的，所以可以人为的将不同频段在频域上简单有效的分离。这种方法叫做 **子频带编码(sub-band coding)**，将频带表征为多个子频带而非全频带的频域特征。
+
+多个子频带这种表征在许多领域都有相应应用，比如对于音频信号分频段进行量化压缩，在语音合成中的作用主要是通过多个子频带分别进行转换，达到加速推断的目的，在保持高质量的合成语音的同时减少计算量
+
+这种子频带编码的时频映射是通过包含多个滤波器的滤波器组实现的，每个滤波器取不同的下采样倍率，通过滤波器组后对信号进行量化编码。在解码合成的阶段将信号上采样，再通过还原滤波器组，还原信号。这个过程可以抽象表述如下图
+
+<div align=center>
+    <img src="zh-cn/img/ch7/02/p3.jpg" /> 
+</div>
+
+在Neural Vocoder 当中运用这种子频带编码，语音信号经过分析滤波器组(analysis filters)然后训练模型，在推断过程中再应用合成滤波器组(synthesis filters)，由于子频带之间条件独立(conditionally independently)，而每个频带下采样了相应倍数，这样模型结构实际是进行了对应压缩，从而减少计算量。
+
+##### 2.1 z变换
+
+因为下文中的部分推导需要用到z变换的相关性质，这里简要叙述下z变换。下文有部分公式，别排斥，我觉得这已经是最方便理解的方法了，而且公式有利于直接改成代码。
+
+首先考虑一个采样率为$F_s=1/T_s$的信号$x$,其傅里叶变换可表示为：
+$$X(f)=\frac{1}{F_s}\sum_{n=-\infty}^{\infty}x(nT_s)e^{-j2\pi\frac{nf}{F_s}}$$
+其中$f$为对应的品PV，取值范围为$-F_s/2$到$F_s/2$,$T_s$为最大周期有$F_s=1/T_s$,$j$表示虚数单位。定义一个频率$f$到复数空间的映射$z(f)=e^{j2\pi f/T_s}$
+
+将z带入傅里叶变换，有$X(f)=\frac{1}{F_s}\sum_{n=-\infty}^{\infty}x(nT_s)z(f)^{-n}$,因为$F_s,T_s$都是和信号采样率相关的常数，令$x[n]-x(nT_s),z=z(f)$,同样$1/F_s$也是常数，因此可以得到傅里叶变换的z变换表达式：
+$$X(z)=\sum_{n=-\infty}^{\infty}x[n]z^{-n}$$
+
+在下面的叙述中会用到几条关于z变换的性质，分别是 
+1. 两离散序列的和的z变换 等于 两序列z变换的和；
+2. 两离散序列的卷积的z变换 等于 两序列z变换的积； 
+3. 序列的延迟可以通过z变换表示,对于$y[n]=x[n-D]$则有
+$$Y(z)=\sum_{n=-\infty}^{\infty}y[n]z^{-n}=\sum_{n=-\infty}^{\infty}x[n-D]z^{-n}=\sum_{n=-\infty}^{\infty}x[m]z^{-m+D}=X(z)z^{D}$$
+4. 序列的下采样K倍的变换可以用z变换表示，对于 $y[n]=x[nK]$，有
+$$Y(z)=\frac{1}{K}\sum_{r=0}^{K}X(z^{1/K}e^{-j2\pi r/K})$$
+5. 同样序列的上采样K倍的变换可以用z变换表示，对于$y[n]=x[m],n=mK$,有$Y(z)=X(z^K)$
+
+##### 2.2 双通道重构滤波器组
+
+基于以上知识可以粗略的开始PQMF的介绍了，但在进行多频带分解之前，我们来考虑一个简单情况 双通道重构滤波器组（two-channel perfect reconstruction filter bank），将信号分解为两个频带。理想情况下，两个滤波器完美分割频带信息，也就是说这里的下采样和上采样倍率都为2
+
+<div align=center>
+    <img src="zh-cn/img/ch7/02/p4.jpg" /> 
+</div>
+
+那么不考虑中间特征的量化去噪等操作，可以将合成过程写作z换形式：
+$$X^{'}(z)=Y_0(z^2)G_0(z)+Y_1(z^2)G_1(z)$$
+
+分解的过程也z变换公式化为：
+
+$$Y_i(z)=\frac{1}{2}(H_i(z^{1/2})X(z^{1/2})+H_i(-z^{1/2})X(-z^{1/2}) )$$
+
+将分解带入合成公式，有：
+
+$$X^{'}(z)=\frac{1}{2}(H_0(z)G_0(z)+H_1(z)G_1(z))X(z) + \frac{1}{2}(H_0(-z)G_0(z)+H_1(-z)G_1(z))X(-z)$$
+
+由于我们想要完美重构会原始语音，也就是要求$x^{'}(z)=X(z)$,那么带入能够得到：
+$$\frac{1}{2}(H_0(z)G_0(z)+H_1(z)G_1(z))=1$$
+$$\frac{1}{2}(H_0(-z)G_0(z)+H_1(-z)G_1(z))=0$$
+
+这样解得$G$和$H$之间的关系，有$G_0(z)=-H_1(z)$以及$G_1(z)=H_0(z)$。 再考虑一种更为简单的滤波器组，正交镜像滤波器组(Quadrature Mirror Filters, QMF)，这种滤波器组有一个性质就是$H_1(z)=-H_0(-z)$,采用这种类型滤波器组，双通道重构滤波器将更加容易被构造，有 
+$G_0(z)=H_0(z)$以及$G_0(z)=H_0(-z)$,这样就可以只需要设计一个滤波器就能得到对应的双通道重构滤波器组了。
+
+##### 2.3 多子频带滤波器
+
+将双通道的情况推广到多通道的情况，基于“正交镜像滤波器组可以完美重构信号”这一结论。如果有正交镜像滤波器组的高维推广，就可以构造多通道的重构滤波器组，从而实现语音信号的多子频带的分解与合成。
+
+正交镜像滤波器组的高维推广的近似解也就是pseudo-QMF，由于相关证明过多这里直接给出其表达式，对于K通道的PQMF滤波器组$k=0,...,K-1$,有如下形式：
+$$h_k[n]=h[n]cos(\pi (\frac{k+\frac{1}{2}}{K})(n-\frac{N-1}{2})+\Phi_k)$$
+$$g_k[n]=h_k[N-1-n]$$
+式子中的$N$表示$h[n]$的长度，相位$\Phi_k$满足$\Phi_k-\Phi_{k-1}=\frac{\pi}{2}(2r+1)$,其中$r$为确定整数，在Multi-Band MelGAN中取0。
+
+确定好PQMF滤波器组形式后现在需要确定其中 $h[n]$滤波器的形式，这里采用的是凯撒窗(Kaiser window)原型滤波器(prototype filter) 。原型滤波器是一种电子滤波器设计，用作模板以针对特定应用生成修改的滤波器设计。它们是无量纲化设计的一个示例，通过该设计可以缩放或转换所需的滤波器。可以通过凯撒窗(Kaiser window)将原型滤波器的构造限制在单一参数变量情况，从而简化原型滤波器的设计过程。设计好的滤波器形式如下:
+$$f_i(n)=\frac{sin(\omega_c(n-0.5N))}{\pi(n-0.5N)}$$
+
+这里的$\omega_c$为截止频率是一个人为设定的常数，将上述滤波器通过凯撒窗(Kaiser window)将得到原型滤波器表达式$h(n)=f_i(n)\omega(n)$。 凯撒窗凸显主要频率段能量，同时削弱其他频段能量，表达式如下：
+$$\omega(n)=\frac{I_o(\beta)\sqrt{1-((n-0.5N)/0.5N)^2}}{I_o(\beta)}$$
+
+$I_o()$为零阶修正贝塞尔函数(zeroth-order modified Bessel function)，用于控制主要频率段宽窄，其中$\beta$为设定的常数。
+$$I_o(x)=1+\sum_{k=1}^{\infty}(\frac{(0.5x)^k}{k!})^2$$
+
+观察最后原型滤波器的公式，其实只有三个需要人为设定的数值，也就是说通过设定截止频率$\omega_c$,阶数(taps)$N$,以及kaiser窗的参数 
+$\beta$,即可确定原型滤波器的具体表达，从而构造PQMF滤波器组。
+
+通过构造好的PQMF，可以对语音分离频段然后进行子频带语音的编码与解码，最后再重构回语音。同样也可以将子频段语音作为参照，对应使用Vocoder合成子频带语音，然后再用PQMF重构滤波器组合成最终语音，实现语音合成的加速。
+
+#### 3.Multi-Band MelGAN
+
+Multi-Band MelGAN主要的改进分为两方面，
+1. 一方面由于MelGAN生成器模型中参数量占比最大的是上采样层，因而可以通过合成子频段再将多个子频段语音通过PQMF重构滤波器组合成最终语音来加速语音合成。 
+2. 另一方面就是加入了STFT loss 优化训练。
+
+##### 3.1 STFT loss
+
+搜狗发现使用MelGAN的生成器loss，Multi-Band MelGAN收敛非常慢，因而使用了一种更为有效的基于快速傅里叶变换(STFT)的loss。STFT loss由两部分组成，一部分考虑频谱收敛性(spectral convergence)，另一部分考虑对数谱能量(log STFT magnitude)之间的关系，分别对应公式
+
+$$L_{sc}(x,\tilde{x})=\frac{\parallel \mid STFT(x)\mid-\mid STFT(\tilde{x})\mid \parallel_F}{\parallel \mid STFT(x)\mid \parallel_F}$$
+
+$$L_{mag}(x,\tilde{x})=\frac{1}{N}\parallel log \mid STFT(x)\mid -log\mid STFT(\tilde{x})\mid \parallel_1 $$
+
+其中$\parallel A \parallel_F$表示$F$范数，$|STFT()|$表示语音快速傅里叶变换后的能量(magnitudes)，$N$表示傅里叶变换后的能量的长度，即fft_length/2。
+
+使用不同STFT参数配置(比如fft长度，窗长，帧长)得到不同分辨率(multi-resolution)的STFT loss，使用M个不同分辨率的STFT loss整合得到
+
+$$L_{mr\_stft}(G)=\mathbb{E}_ {x,\tilde{x}}[\frac{1}{M}\sum_{m=1}^{M}(L_{sc}^m(x,\tilde{x})+L_{mag}^{m}(x,\tilde{x}))]$$
+
+将多分辨率STFT loss 替代MelGAN的feature matching项，作为生成器loss：
+
+$$min_G \mathbb{E}_ {s,z}[\lambda \sum_{k=1}^K(D_k(G(s,z))-1)^2] + \mathbb{E}_ {s}[L_{mr\_stft}(G)]  $$
+
+其中$s$表示输入特征Mel Spectrogram，$z$表示高斯噪音。
+
+同时为了解决训练收敛较慢的问题以及判别器性能优于生成器可能导致无法更新梯度，Multi-Band MelGAN的训练采用先预训练一定步数的生成器，当逐渐可以合成语音了再加入判别器一同训练。
+
+##### 3.2 整体结构
+
+模型结构方面其实MB-MelGAN相比于MelGAN并未加以改变，通过组合上述 PQMF 和 STFT loss 可以得到如下的结构图
+
+<div align=center>
+    <img src="zh-cn/img/ch7/02/p5.png" /> 
+</div>
+
+具体的每个模块的构造于MelGAN 无异,可以参考 MelGAN.
+
+#### 参考文献
+
+Multi-band melgan: Faster waveform generation for high-quality text-to-speech.
+
+Melgan: Generative adversarial networks for conditional waveform synthesis.
+
+Introduction to digital audio coding and standards
+
+Highresolution image synthesis and semantic manipulation with conditional gans.
+
+A kaiser window approach for the design of prototype filters of cosine modulated filterbanks.
 
 ------
 ### 3. ParallelWaveGAN
@@ -339,13 +492,16 @@ Zhu, J.-Y., Park, T., Isola, P., and Efros, A. A. Unpaired image-to-image transl
 
 
 
+
+
 <!-- ### 4. GAN-TTS discriminators -->
 <!-- !> 元旦假期结束搞定上述3篇paper -->
 ------
-
 ### 4. WaveNet
 
 !> https://arxiv.org/abs/1609.03499
+
+
 
 
 

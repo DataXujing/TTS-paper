@@ -15,7 +15,7 @@
 
 - [x] 1.语音合成综述
 - [x] 2.语音合成开源项目和数据集
-- [ ] 3.Text-to-spectrogram
+- [x] 3.Text-to-spectrogram
 - [ ] 4.End-to-End Models
 - [ ] 3.Vocoders
 - [ ] 4.语音克隆
