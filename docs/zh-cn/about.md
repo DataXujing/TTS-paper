@@ -41,6 +41,8 @@
 |2023-12-27            |  Mixer-TTS |
 |2023-12-29            |  MelGAN |
 |2024-01-03            |  Multi Band-MelGAN |
+|2024-01-06            |  Parallel WaveGAN |
+
 
 
 

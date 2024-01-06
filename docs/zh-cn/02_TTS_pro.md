@@ -34,6 +34,7 @@
 [13]. <https://yqli.tech/page/tts_paper.html>
 
 
+
 <!-- https://mp.weixin.qq.com/s/GHkc1DN4Dozzz50Fq8m3kQ -->
 
 
@@ -62,6 +63,19 @@
 
 [11]. <https://github.com/justinjohn0306/so-vits-svc-4.0>
 
+[12]. facebookresearch/audiocraft: https://github.com/facebookresearch/audiocraft
+
+[13]. w-okada/voice-changer: https://github.com/w-okada/voice-changer
+
+[14]. espnet/espnet: https://github.com/espnet/espnet
+
+[15]. babysor/MockingBird: https://github.com/babysor/MockingBird
+
+[16]. CorentinJ/Real-Time-Voice-Cloning: https://github.com/CorentinJ/Real-Time-Voice-Cloning
+
+[17]. neonbjb/tortoise-tts: https://github.com/neonbjb/tortoise-tts
+
+[18]. https://mp.weixin.qq.com/s/OyxSSUPzGZWBLgCfQAI2wg
 
 
 ### 3.TTS常用开源数据集

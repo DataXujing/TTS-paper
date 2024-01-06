@@ -319,7 +319,7 @@ Zhu, J.-Y., Park, T., Isola, P., and Efros, A. A. Unpaired image-to-image transl
 
 ------
 
-### 2. MultiBandMelGAN:Faster Waveform Generation for High-Qualty Text-to-Speech
+### 2. Multi-Band MelGAN:Faster Waveform Generation for High-Qualty Text-to-Speech
 
 !> https://arxiv.org/abs/2005.05106
 
@@ -481,7 +481,7 @@ Highresolution image synthesis and semantic manipulation with conditional gans.
 A kaiser window approach for the design of prototype filters of cosine modulated filterbanks.
 
 ------
-### 3. ParallelWaveGAN
+### 3. Parallel WaveGAN:A Fast Waveform Generation Model Based on Generative Adversarial Networks with Multi-Resolution Spectrogram
 
 !> https://arxiv.org/pdf/1910.11480.pdf
 
@@ -489,20 +489,157 @@ A kaiser window approach for the design of prototype filters of cosine modulated
 
 <!-- https://blog.csdn.net/weixin_42721167/article/details/119451215 -->
 
+#### 摘要
 
+我们提出了Parallel WaveGAN，一种使用生成式对抗网络的无蒸馏、快速和占用空间小的波形生成方法。该方法通过联合优化多分辨率谱图和对抗Loss函数来训练非自回归WaveNet，能够有效地捕捉真实语音波形的时频分布。由于我们的方法不需要在传统的师生框架中使用密度蒸馏，整个模型易于训练。此外，我们的模型在结构紧凑的情况下也能生成高保真语音。其中，提出的并行WaveGAN只有1.44M个参数，在单个GPU环境下生成24kHz语音波形的速度比实时速度快28.68倍。感知听力测试结果表明，本文提出的方法在基于Transformer的文本到语音框架中获得了4.16的平均意见得分(MOS)，与基于蒸馏的最好的Parallel WaveNet系统做对比。
+       
+关键词 - 神经声码器，TTS，GAN，Parallel WaveNet，Transformer
 
+#### 1.介绍
 
+文本到语音(TTS)框架中的深度生成模型显著提高了合成语音信号的质量(《Statistical parametric speech synthesis using deep neural networks》，《Effective spectral and excitation modeling techniques for LSTM-RNN-based speech synthesis systems》，《Natural TTS synthesis by conditioning WaveNet on mel spectrogram predictions》)。值得注意的是，自回归生成模型如WaveNet已经显示出比传统参数声码器更优越的性能(《WaveNet: A generative model for raw audio》，《A comparison of recent waveform generation and acoustic modeling methods for neural-network-based speech synthesis》，《Speaker-dependent WaveNet vocoder》，《An investigation of multi-speaker training for WaveNet vocoder》，《Excitnet vocoder: A neural excitation model for parametric speech synthesis systems》)。然而，由于自回归的特性，其推理速度较慢，因此在实时场景中的应用受到限制。
 
+解决这种局限性的一种方法是利用基于教师-学生框架的快速波形生成方法(《Parallel WaveNet: Fast high-fidelity speech synthesis》，《ClariNet: Parallel wave generation in end-to-end text-to-speech》，《Probability density distillation with generative adversarial networks for high-quality parallel waveform generation》)。在这个框架中，定义为概率密度蒸馏的桥梁将自回归教师WaveNet的知识转移到基于逆自回归流(IAF)的学生模型(《Improved variational inference with inverse autoregressive flow》)。虽然IAF学生能够以合理的感知质量实现实时生成语音，但在训练过程中仍然存在问题：不仅需要一个训练良好的教师模型，还需要一种试错方法来优化复杂的密度蒸馏过程。
+
+为了克服上述问题，我们提出了一种基于生成式对抗网络(generative adversarial network, GAN)(《Generative adversarial nets》)的并行波形生成方法——Parallel WaveGAN。与传统的基于蒸馏的方法不同，Parallel WaveGAN不需要两个阶段，而是连续的教师-学生训练过程。
+该方法仅通过优化多分辨率短时傅里叶变换(STFT)和对抗损失函数的组合来训练非自回归WaveNet模型，使该模型能够有效地捕获真实语音波形的时频分布。因此，整个训练过程比传统方法简单得多，并且模型参数较少，可以产生自然发声的语音波形。我们的贡献总结如下：
+1. 提出了一种多分辨率短时傅立叶变换损失和波形域对抗损失的联合训练方法。该方法既适用于传统的基于蒸馏的Parallel WaveNet(如ClariNet)，也适用于提出的无蒸馏Parallel WaveGAN。
+2. 由于所提出的Parallel WaveGAN可以在没有任何教师-学生框架的情况下进行简单的训练，因此我们的方法大大减少了训练和推理时间。特别是训练过程变得快4.82倍(从13.5天到2.8天，使用两个NVIDIA Telsa V100 GPU)和推理过程变得快1.96倍(从14.62到28.68 倍实时速度生成24kHz语音波形，使用单个NVIDIA Telsa V100 GPU)，与传统的ClariNet模型相比。
+3. 我们将提出的Parallel WaveGAN与基于Transformer的TTS声学模型相结合(《Attention is all you need》，《Neural speech synthesis with Transformer network》，《FastSpeech: Fast, robust and controllable text to speech》)。感知听力测试结果表明，提出的Parallel WaveGAN模型达到了4.16 MOS，与基于蒸馏的ClariNet模型相比具有一定的竞争力。
+
+#### 2.相关工作
+
+在Parallel WaveNet框架中使用GAN的想法并不新鲜。在我们之前的工作中，IAF学生模型被纳入到生成器中，并通过最小化对抗损失以及Kullback-Leibler散度(KLD)和辅助损失(《Probability density distillation with generative adversarial networks for high-quality parallel waveform generation》)进行联合优化。由于GAN学习了真实语音信号的分布，该方法显著提高了合成信号的感知质量。但基于密度精馏的训练阶段复杂，限制了其应用。
+
+我们的目标是尽量减少训练传统教师-学生框架的两阶段管道的努力。换句话说，我们提出了一种新的方法训练Parallel WaveNet不需要任何蒸馏过程。Juvela等人(《GELP: GAN-excited linear prediction for speech synthesis from melspectrogram》)也提出了类似的方法(例如GAN激发线性预测，GELP)，利用对抗式训练方法产生声门刺激。然而，由于GELP需要线性预测(LP)参数来将声门激励转换为语音波形，因此，当LP参数包含TTS声学模型不可避免的误差时，可能会出现质量下降。为了避免这个问题，我们的方法是直接估计语音波形。由于很难捕捉语音信号的动态特性，包括声带运动和声道共振(分别由GELP中的声门兴奋和LP参数表示)，**我们提出了对抗损失和多分辨率STFT损失的联合优化方法**，以捕获真实语音信号的时频分布。因此，即使参数较少，整个模型也易于训练，同时有效地减少了推断时间，提高了合成语音的感知质量。
+
+#### 3.方法
+
+##### 3.1 基于GAN的并行波形生成
+
+GAN是生成模型，由两个独立的神经网络组成:生成器(G)和判别器(D)(《Generative adversarial nets》)。在我们的方法中，一个基于WaveNet型以辅助特征(如梅尔谱图)为条件作为生成器，它将输入噪声并行地转换为输出波形。生成器与原始WaveNet的不同之处在于：(1)我们使用非因果卷积而不是因果卷积；(2)输入为高斯分布的随机噪声；(3)模型在训练和推理阶段都是非自回归的。
+
+生成器学习真实波形的分布，通过试图欺骗判别器来识别生成器样本为真实的。这个过程是通过最小化对抗损失(Ladv)来完成的，如下所示：
+
+$$L_{adv}(G,D)=\mathbb{E}_ {z\sim N(0,1)}[(1-D(G(z)))^2]$$
+
+其中$z$为输入白噪声。注意，为了简洁，$G$的辅助特性被省略了。
+
+另一方面，利用以下优化准则训练判别器，在将Ground Truth分类为真实的同时，将生成的样本正确分类为假样本：
+
+$$L_{D}(G,D)=\mathbb{E}_ {x\sim P_{data}}[(1-D(x))^2]+\mathbb{E}_ {z\sim N(0,1)}[(1-D(G(z)))^2]$$
+
+式中，$x$和$P_{data}$分别表示目标波形及其分布。
+
+##### 3.2 多分辨率STFT辅助损耗
+
+为了提高对抗训练过程的稳定性和效率，我们提出了一种多分辨率短时傅里叶变换辅助损失算法。下图显示了我们将多分辨率短时傅立叶变换损失与3.1节中描述的对抗训练方法相结合的框架。
+
+<div align=center>
+    <img src="zh-cn/img/ch7/03/p1.png" /> 
+</div>
+
+与前面的工作(《Probability density distillation with generative adversarial networks for high-quality parallel waveform generation》)相似，我们定义单个**STFT损失**如下：
+
+$$L_s(G)=\mathbb{E}_ {z\sim p(z),x \sim P_{data}}[L_{sc}(x,\hat{x})+L_{mag}(x,\hat{x})]$$
+
+其中$\hat{x}$表示生成的样本$G(x)$,$L_{sc}$和$L_{mag}$分别表示光谱收敛性和对数STFT幅值损失，定义如下(《Fast spectrogram inversion using multi-head convolutional neural networks》)：
+
+$$L_{sc}=\frac{|| |STFT(x)|-|STFT(\hat{x})| ||_ F}{|| |STFT(x)| ||_ F}$$
+$$L_{mag}=\frac{1}{N}||log|STFT(x)|-log|STFT(\hat{x})| ||_ 1$$
+
+其中$||\cdot||_ F$和$||\cdot||_ 1$分别为Frobenius范数和$L_1$范数;$|STFT(\cdot)|$和$N$分别表示STFT幅值和幅值中元素的个数。
+
+我们的多分辨率STFT损失是不同分析参数(即FFT大小、窗口大小和帧移)下STFT损失的总和。设M为STFT损耗数，则多分辨率STFT辅助损耗$L_{aux}$表示为：
+$$L_{aux}(G)=\frac{1}{M}\sum^{M}_ {m=1}L_{s}^{(m)}(G)$$
+
+在基于STFT的信号时频表示中，存在时间分辨率和频率分辨率之间的权衡；例如，增加窗口大小可以获得更高的频率分辨率，而降低时间分辨率(《The wavelet transform, time-frequency localization and signal analysis》)。通过结合不同分析参数的多种短时傅立叶变换损耗，极大地帮助生成器了解语音(《Neural source-filterbased waveform model for statistical parametric speech synthesis》)的时频特性。此外，它还防止生成器过拟合到固定的STFT表示，这可能导致在波形域的次优性能。
+
+我们对生成器的最终损失函数定义为多分辨率STFT损失和对抗损失的线性组合，如下所示：
+$$L_G(G,D)=L_{aux}(G)+\lambda_{adv}L_{adv}(G,D)$$
+其中$\lambda_{adv}$表示平衡两个损失项的超参数。通过对波形域对抗损失和多分辨率STFT损失的联合优化，可以有效地了解真实语音波形的分布。
+
+#### 4.实验
+
+##### 4.1 实验设置
+
+**数据集**： 在实验中，我们使用了一个由一位女性日语专业人士记录的语音和平实平衡的语料库。语音信号以24kHz采样，每个采样用16比特量化。共使用11449个话语(23.09小时)进行训练，使用250个话语(0.35小时)进行验证，使用250个话语(0.34小时)进行评价。提取限频(70 ~ 8000Hz)的80波段log-mel谱图作为波形生成模型(即局部条件(《WaveNet: A generative model for raw audio》))的输入辅助特征。帧长设置为50ms，移位长度设置为12.5ms。训练前将梅尔谱图特征归一化，使其均值和单位方差均为零
+
+**模型细节**：
+提出的Parallel WaveGAN由30层空洞残差卷积块组成，以指数方式增加三个扩张周期。剩余通道和跳跃通道数设为64，卷积滤波器大小设为3。该判别器由10层非因果空洞的一维卷积组成，具有泄漏的ReLU激活函数(α = 0.2)。步幅设置为1，从1到8的一维卷积应用线性增加的扩张，除了第一层和最后一层。通道的数量和滤波器的大小与生成器相同。我们对生成器和判别器(《Weight normalization: A simple reparameterization to accelerate training of deep neural networks》)的所有卷积层都进行了权值归一化。
+
+在训练阶段，由三种不同的STFT损失之和计算多分辨率STFT损失，如下图所示。判别器损失由判别器的每个时间步长标量预测的平均值计算。根据初步实验结果，将$L_G(G,D)$中的$\lambda_{adv}$设定为4.0。用RAdam优化器($\epsilon = 1e^{-6}$对模型进行400K步的训练，以稳定训练(《On the variance of the adaptive learning rate and beyond》)。注意，前100K步的判别器是固定的，之后联合训练两个模型。batch size大小设置为8，每个音频剪辑的长度设置为24K时间样本(1.0秒)。对生成器和判别器分别设置初始学习率为0.0001和0.00005。每200K步学习率降低一半。
+
+<div align=center>
+    <img src="zh-cn/img/ch7/03/p2.png" /> 
+</div>
+
+作为基线系统，我们同时使用了自回归Gaussian WaveNet和Parallel WaveNet(即ClariNet)(《ClariNet: Parallel wave generation in end-to-end text-to-speech》，《Probability density distillation with generative adversarial networks for high-quality parallel waveform generation》)。该WaveNet由24层空洞残差卷积块组成，具有4个膨胀周期。剩余通道和跳跃通道的数量设置为128个，滤波器大小设置为3。采用RAdam优化器对模型进行1.5M步的训练。学习率设置为0.001，每200K步学习率降低一半。batch size大小设置为8，每个音频剪辑的长度设置为12K时间样本(0.5秒)。
+
+ 为了训练基线ClariNet，我们使用上述的自回归WaveNet作为教师模型。ClariNet以高斯IAFs为基础，由六个流程组成。每个流的参数由10层空洞残差卷积块以指数增长的膨胀周期进行参数化。剩余通道和跳跃通道的数量设置为64，滤波器大小设置为3。
+
+平衡KLD和STFT辅助损失的权重系数分别设为0.5和1.0。使用与Parallel WaveGAN相同的优化器设置，对模型进行了400K步的训练。我们还研究了对抗损失ClariNet作为GAN和密度蒸馏的混合方法。模型结构与基线ClariNet相同，但采用KLD、STFT和对抗损失的混合训练，其中平衡它们的权重系数分别设为0.05、1.0和4.0。采用固定的判别器对模型进行200K步的训练，对其余200K步的生成器和判别器进行联合优化。
+       
+在整个波形生成模型中，对输入辅助特征进行最近邻上采样，然后进行二维卷积，使辅助特征的时间分辨率与语音波形的采样率相匹配(《Probability density distillation with generative adversarial networks for high-quality parallel waveform generation》，《Deconvolution and checkerboard artifacts》)。注意，辅助特征不用于判别器。所有模型都使用了两个NVIDIA Tesla V100 GPU进行训练。实验在NAVER智能机器学习(NSML)平台(《NSML: Meet the mlaas platform with a real-world case study》)上进行。
+
+##### 4.2 评价
+
+为评价知觉质量，采用平均意见评分(MOS)检验。18位以日语为母语的人被要求对合成语音样本做出高质量的判断，使用以下5种可能的回答：1 = Bad; 2 = Poor; 3 = Fair; 4 = Good; and 5 = Excellent。从评价集合中随机抽取20个话语，然后使用不同的模型进行合成。
+
+<div align=center>
+    <img src="zh-cn/img/ch7/03/p3.png" /> 
+</div>
+
+上图给出了不同生成模型的推理速度和MOS测试结果。结果表明：
+1. 有短时傅立叶变换损失的系统比没有短时傅立叶变换损失的系统(即自回归WaveNet)表现更好。注意，大多数听者对自回归WaveNet系统产生的高频噪声不满意。这可以用以下事实来解释：在WaveNet中，只有频段有限(70 - 8000Hz)的梅尔光谱图用于局部调节，而其他系统能够通过STFT损失直接学习全频带频率信息。
+2. 所提出的基于短时傅立叶变换损失的多分辨率模型比传统的单一短时傅立叶变换损失模型具有更高的感知质量(分别比较系统3和系统6与系统2和系统5)。这证实了多分辨率STFT损耗有效地捕获了语音信号的时频特性，使其能够获得更好的性能。
+3. 提出的对抗性损失在ClariNet上没有很好地工作。然而，当它与TTS框架相结合时，可以发现它的优点，这将在下一节中讨论。
+4. 最后，提出的Parallel WaveGAN达到4.06 MOS。虽然与ClariNet相比，Parallel WaveGAN的感知质量相对较差，但它产生语音信号的速度是ClariNet的1.96倍。
+
+此外，该方法的优点在于训练过程简单。我们测量了获得最优模型的总训练时间，如下图所示。由于Parallel WaveGAN不需要任何复杂的密度蒸馏，优化只需要2.8天的训练时间，比自回归WaveNet和ClariNet分别快2.64和4.82倍
+
+<div align=center>
+    <img src="zh-cn/img/ch7/03/p4.png" /> 
+</div>
+
+##### 4.3 从文本到语音
+
+为了验证所提方法作为TTS框架声码器的有效性，我们将Parallel WaveGAN与基于Transformer的参数估计相结合(《Attention is all you need》，《Neural speech synthesis with Transformer network》，《FastSpeech: Fast, robust and controllable text to speech》)。
+
+为了训练Transformer，我们使用音素序列作为输入，从录音语音中提取梅尔谱图作为输出。该模型由一个6层编码器和一个6层解码器组成，每个编码器和解码器都是基于多头注意力(有8个头)。配置遵循之前的工作(《FastSpeech: Fast, robust and controllable text to speech》)，但模型被修改为接受重音作为音高重音语言(如日语)(《Investigation of enhanced Tacotron text-to-speech synthesis systems with self-attention for pitch accent language》)的外部输入。该模型使用RAdam优化器进行1000个周期的训练，并使用预热学习率调度(《Attention is all you need》)。初始学习率设置为1.0，使用动态批大小(平均64)策略稳定训练。
+
+在合成步骤中，输入的音素和重音序列通过Transformer TTS模型转换为相应的梅尔谱图。通过输入得到的声学参数，声码器模型生成时域语音信号。
+
+为了评估生成的语音样本的质量，我们进行了MOS测试。测试设置与4.2节中描述的相同，但我们在测试中使用了自回归WaveNet和经过多分辨率STFT损失训练的并行生成模型(分别在表2中描述的系统1、3、4和6)。MOS试验结果如表4所示，其中可以总结如下：
+1. 有对抗损失的ClariNet比没有对抗损失的ClariNet表现更好，尽管在分析/合成情况下，他们的知觉质量几乎相同(系统3和系统4如表2所示)。这意味着使用对抗损失有利于提高模型对由声学模型引起的预测措辞误差的稳健性。
+2. 对抗性训练的优点也有利于提出的Parallel WaveGAN系统。
+
+因此，采用Transformer TTS模型的Parallel WaveNet达到了4.16 MOS，达到了最佳的基于蒸馏的Parallel WaveNet(ClariNet-GAN)。
+
+<div align=center>
+    <img src="zh-cn/img/ch7/03/p5.png" /> 
+</div>
+
+#### 5.结论
+
+提出了一种基于GAN的无蒸馏、快速、小足迹的并行波形生成方法。通过联合优化波形域对抗损失和多分辨率STFT损失，我们的模型能够学习如何生成真实的波形，而不需要任何复杂的概率密度蒸馏。实验结果表明，该方法在基于Transformer的TTS框架内达到了4.16 MOS，在仅1.44M模型参数的情况下，生成24kHz语音波形的速度是实时的28.68倍。未来的研究包括改进多分辨率短时傅里叶变换的辅助损失，以更好地捕捉语音特征(如引入相位相关损失)，并验证其在各种语料库(包括表达语料库)中的性能。
 
 <!-- ### 4. GAN-TTS discriminators -->
-<!-- !> 元旦假期结束搞定上述3篇paper -->
 ------
+
 ### 4. WaveNet
 
 !> https://arxiv.org/abs/1609.03499
 
 
+<!-- https://zhuanlan.zhihu.com/p/414519043 -->
+<!-- https://blog.csdn.net/weixin_42721167/article/details/112593690 -->
+<!-- https://zhuanlan.zhihu.com/p/338245185 -->
 
+<!-- https://www.bilibili.com/video/BV1ZK4y1Z73J/?vd_source=def8c63d9c5f9bf987870bf827bfcb3d -->
+<!-- https://www.bilibili.com/video/BV13v411w7p7/?vd_source=def8c63d9c5f9bf987870bf827bfcb3d -->
+
+<!-- https://zhuanlan.zhihu.com/p/662017509 -->
 
 
 
@@ -513,6 +650,9 @@ A kaiser window approach for the design of prototype filters of cosine modulated
 !> https://github.com/fatchord/WaveRNN
 
 <!-- https://zhuanlan.zhihu.com/p/464033874 -->
+
+
+
 
 ### 6. WaveGrad
 
