@@ -627,9 +627,11 @@ $$L_G(G,D)=L_{aux}(G)+\lambda_{adv}L_{adv}(G,D)$$
 <!-- ### 4. GAN-TTS discriminators -->
 ------
 
-### 4. WaveNet
+### 4. WaveNet: A Generative Model for Raw Audio
 
 !> https://arxiv.org/abs/1609.03499
+
+!> 源码详解参考： <https://zhuanlan.zhihu.com/p/24568596>
 
 
 <!-- https://zhuanlan.zhihu.com/p/414519043 -->
@@ -641,7 +643,189 @@ $$L_G(G,D)=L_{aux}(G)+\lambda_{adv}L_{adv}(G,D)$$
 
 <!-- https://zhuanlan.zhihu.com/p/662017509 -->
 
+**评论**：文章对模型的设计非常好，很有参考价值。模型中采用的空洞卷积的方法来极大的增加感受野，对序列数据建模很有用。
 
+#### 摘要
+
+本文提出了一种对于生成原始语音模型的深度神经网络。这个模型是完全的概率自回归模型。有以下几个亮点：
+
+1. 通过这个模型，可以生成更加真实的语音。
+2. 可以以相同的保真度捕捉多人的语音并且可以在多人之间切换。
+3. 在音乐上的合成，也会生成高保真的语音片段。
+4. 作为一个判别模型，在音素识别上有可观的前景。
+
+#### 1.简介
+
+受到最近利用神经自回归生成模型模拟复杂的分布例如（图像和文字）的启发，这篇文章挖掘了原始语音生成的一些技术：使用神经网络架构，把**像素或者单词的联合概率作为条件概率分布的乘积的建模方法**。本文要试图解决的问题是： 这些方法是否可以在宽带原始音频波形的生成中的应用。这些音频波形信号具有非常高的短时分辨率。
+
+基于 PixelCNN, 这篇文章的主要贡献是：
++ 展示了WaveNet可以生成原始语音信号，其自然度由人类裁判进行主观评分，这在语音合成（TTS）领域还未被报道过。
++ 为了处理原始音频生成中所需的**大跨度时间依赖**，我们基于空洞因果卷积（dilated causal convolutions）开发了新的架构，它具有非常大的感受野(receptive filed)。
++ 展示了如果基于说话人身份进行训练，单个模型可以生成不同风格的语音。
++ 同样的架构在小规模语音识别数据集的测试中获得了很好的结果，同时用于音乐等其他形态的音频生成中也有很好的前景。
+
+#### 2.WaveNet
+
+类似于PixelCNN，我们有联合概率密度分布$x=x_1,...,x_T$
+ , 其作为条件概率密度的乘积： $$ p(x)=\prod_{t=1}^Tp(x_t|x_1,...,x_{t-1}) $$ 其实我们可以观察到，每一个音频样本都取决于前面的样本，也就说这里是一个时间序列模型。类似于PixelCNN，有以下特点：
++ 条件概率分布是通过多层卷积实现的，网络中没有pooling层。
++ 模型使用softamx的层来输出，使用最大似然函数（MLE）进行优化。
++ 因为对数易于处理，我们通过MLE在验证集上进行超参数优化的时候可以很容易测定模型的overfitting/underfitting。
+
+##### 2.1 空洞因果卷积(Dilated causal convolutions)
+
+<div align=center>
+    <img src="zh-cn/img/ch7/04/p1.png" /> 
+</div>
+
+使用因果卷积(causal convolutions)来保证 $p(x_{t+1}|x_1,...,x_t)$
+ 不包含 $x_{t+1},...,x_T$
+ 的信息。对于图像处理任务中，类似的是采用masked convolution。对于1-D数据，秩序将输出偏移几步就行。动态图参考： [WaveNet: A Generative Model for Raw Audio | DeepMind](https://deepmind.google/discover/blog/wavenet-a-generative-model-for-raw-audio/)
+
+**Causal convolutions和RNN的区别：**
+
+1. 在训练阶段，由于标定真实数据$x$的所有时间步骤都是已知的，因此所有时间步骤的条件概率预测可以**并行进行**。在推断阶段，预测结果是串行的：每一个预测出的样本都被传回网络用于预测下一个样本
+2. 因为没有循环连接，通常训练起来比RNN更快。
+
+但是存在一个问题就是，因果卷积存在的一个问题就是需要很多的卷积层或者很大的filter来实现增加感受野的功能。比如说上面那张图片的感受野只有`5 (= # layers + filter length - 1)` ，关于感受野的计算， 参考[感受野(Receptive Field)的理解与计算](https://zhuanlan.zhihu.com/p/113487374), 所以我们在这里使用了空洞（扩张）卷积来成倍增加感受野，并且没有很大的计算消耗。
+
+<div align=center>
+    <img src="zh-cn/img/ch7/04/p2.png" /> 
+</div>
+
+在上图中，感受野分别增加了`1，2，4，8`倍。空洞卷积（dilated convolution）可以使模型在层数不大的情况下有非常大的感受野。在这篇论文中，扩大系数都翻倍至上限，然后重复循环， 例如：`1, 2, 4, . . . , 512, 1, 2, 4, . . . , 512, 1, 2, 4, . . . , 512`. 为什么要这样配置呢？有两个intution：
+
++ 指数级增长(exponentially increasing)的扩大可以引起感受野指数级的增长。例如每一组`1;2;4;:::;512`这样的卷积模块都拥有1024大小的感受野， 可视为与1x1024卷积对等的更高效的（非线性）判别式卷积操作 。
++ 将多组这样的模块堆叠起来可以进一步增长模型的容量和感受野。
+
+##### 2.2 SoftMax的分布
+
+因为原始音频是按照16-bit（one per timestep）的整数值序列储存的，每个timestep，softmax层需要输出65536个概率值。为了便于运算，我们应用了**Law Companding Transformation**进行转换，将输出概率数目降低为256个。公式如下：
+
+$$f(x_t)=sign(x_t)\frac{ln(1+\mu|x_t|)}{ln(1+\mu)},其中-1 < x_t < 1, \mu=255$$
+
+##### 2.3 门控单元
+
+本文也采用了类似于PixelCNN的门控单元：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/04/p3.png" /> 
+</div>
+
+$$z=tanh(W_{f,k} \ast x) \odot \sigma(W_{g,k} \ast x)$$
+
++ $\ast$是卷积操作
++ $\odot$是矩阵element-wise的乘积
++ $\sigma$是sigmoid函数
++ $k$是层数索引
++ $f,g$是滤波器和Gate
++ $W$是卷积核
+
+> 为什么不使用ReLU？
+
+In our initial experiments, we observed that this non-linearity worked significantly better than the rectified linear activation function (Nair & Hinton, 2010)(ReLU) for modeling audio signals. 因为在音频信号分析中，sigmoid就是好一些。
+
+<div align=center>
+    <img src="zh-cn/img/ch7/04/p4.png" /> 
+</div>
+
+上面是ReLU的激活，丢失了信息。
+
+##### 2.3 Residual and skip connections
+
+<div align=center>
+    <img src="zh-cn/img/ch7/04/p5.png" /> 
+</div>
+
+<div align=center>
+    <img src="zh-cn/img/ch7/04/p6.png" /> 
+</div>
+
+文章中使用了residual 和skip connection技术来使模型更快收敛，并且使梯度能传到到更深层模型。
+
+##### 2.4 Conditional WaveNet
+
+接受额外输出的$h$，我们可以如下建模：
+
+$$p(x|h)=\prod^{T}_ {t=1}p(x_ t|x_1,..,x_{t-1},h)$$
+
+通过条件分布输入其他变量建模，我们可以使得WaveNet生成具有目标特点的音频。额外信息可以是：在多人语音我们输入一个人声音作为额外输入，在TTS(text-to-speech)的任务中，我们可以额外输入text的信息。文章中有两种建模的方法：全局方法(global conditioning) 以及局部方法 (local conditioning).
+
+1. Global conditioning
+
+全局建模方法接受单额外输入$h$，并且$h$在所有时间节点影响输出, 
+$$z=tanh(W_{f,k}\ast x+V_{f,k}^{T}h) \odot \sigma(W_{g,k}\ast x + V_{g,k}^{T}h)$$
+
+$V_{\ast,k}^T$在所有时间节点上传播,$V_{\ast,k}$是可学习的参数矩阵。
+
+2. Local conditioning
+
+我们有第二种时间序列$h_t$,可以通过对原始数据的降采样率获得（比如TTS模型中的线性特征）。我们首先通过transposed convolutional network（learned upsampling）$y=f(h)$将时间序列转换成和语音序列一样分辨率的新的时间序列。然后将其用于激活单元：
+
+$$z=tanh(W_{f,k}\ast x+V_{f,k}^{T}y) \odot \sigma(W_{g,k}\ast x + V_{g,k}^{T}y)$$
+
+如果采用了transposed convolutional network (learned upsampling),我们也可以直接使用 $V_{f,k}\ast h$
+,但是没有`1x1`卷积好。
+
+##### 2.5 Context Stacking
+
+我们提到的增加感受野(receptive filed)的方法：
+
++ 增加空洞卷积的数目
++ 使用更多层数
++ 更大的卷积核滤波器(filter)
++ 更大的空洞因子
+
+另外一种可以增加感受的野的补充方法是：使用一个独立的更小的上下文堆栈来处理语音信号的长跨度信息，并局部调试一个更大的WaveNet只用来处理语音信号的更短的局部信息（在结尾处截断）。可以使用多个变长的具有不同数量隐藏单元的上下文堆栈，拥有越大感受野的堆栈其每层含有的隐藏单元越少。上下文堆栈还可以使用池化层来降低频率，这使得计算成本被控制在合理范围，也与用更长的跨度对时间相关性建模会使体量更小的直觉相吻合。
+
+#### 3.实验
+
+主要进行了三个Tasks的实验：
+
++ 多说话人的语音合成（没有基于文本训练）
++ 文本合成语音
++ 语音音频建模
+
+关于实验部分：请见[deepmind的post](https://deepmind.google/discover/blog/wavenet-a-generative-model-for-raw-audio/)
+
+**Multi-Speaker Speech Generation**
+
+使用的多人语音材料是来自于: CSTR voice cloning toolkit (VCTK)，基于说话人的条件进行了建模，数据集一共包括44个小时的109个位不同的说话人。
+
+因为不是基本文本信息建模，所以这个也会产生一些现实中并不存在但是听起来还是不错的一些人类语言。这就像语言生成图片一样，乍一看还不错，细瞅瞅就不行了。部分由于感受野的大小，这些语音在长跨度上缺少连贯性，基本上每次只能记住2-3个场景信息。
+
+通过one-hot编码，单个的WaveNet可以建模任意一个说话者语音。我们发现，与在单人的数据集训练上相比，增加训练集说话人的数量可以在验证集上获得更好的效果。这表示：WaveNet的说话表达是多人共享的。同时WaveNet也会捕捉其他语音信息，例如声音质量，说话人的呼吸以及嘴部动作等。
+
+**Text-to-Speech**
+
+数据集来自于Google’s North American English and Mandarin Chinese TTS systems。
+
+在TTS 的任务中，WaveNet只考虑了(were locally conditioned on)语言学特征。同时也考虑了语言学特征和对数基频(logarithmic fundamental frequency, $logF_0$)作为额外的feature考虑到模型生成中去。这个模型的感受野是250毫秒，还构建了HMM单元选择拼接(Gonzalvo et al., 2016)语音合成器作为基于例句的基线，以及LSTM-RNN统计参数(Zen et al., 2016)语音合成器作为基于模型的基线。整个评价采用了主观评分模式。五分制度（5为最高分）
+
+<div align=center>
+    <img src="zh-cn/img/ch7/04/p7.png" /> 
+</div>
+
+**Music**
+
+数据集来自于：
+
++ the MagnaTagATune dataset (Law&Von Ahn, 2009), which consists of about 200 hours of music audio. Each 29-second clip is annotated with tags from a set of 188, which describe the genre, instrumentation, tempo, volume and mood of the music.
++ the YouTube piano dataset, which consists of about 60 hours of solo piano music obtained from YouTube videos. Because it is constrained to a single instrument, it is considerably easier to model.
+
+我们发现，对于让一段音乐获得音乐性，增加感受野的长度是非常重要的。即使感受野增加到几秒钟，这个模型也没表现出长的连续性。我们发现，即使是非条件建模，这个模型还是不错的，特别在合声部分。
+
+但是，我们希望进行条件建模，例如说题材和乐器等。类似于条件语音生成一般，我们插入了依赖于与每个训练片段相关联的标签的二进制向量表示的bias。当我们采样的时候，这就可以使我们能够去控制我们的输出样本，并且效果还不错。
+
+**Speech Recognition**
+
+WaveNet也可以用在语音识别里面。总结了下前人的工作，近期的研究转向到原始语音数据建模。例如：(Palaz et al., 2013; T¨uske et al., 2014; Hoshen et al., 2015; Sainath et al., 2015). LSTM-RNNs 是这些工作的核心部分，LSTM使得我们可以建立更大的感受野但是同时我们可以使用更小的代价函数。
+
+#### 4.结论
+
+本文提出了WaveNet，利用自回归且结合了空洞因果卷积增加感受野，这对于长时序问题建模的依赖非常重要。WaveNet可以通过两种方式建模，global (e.g. 语音识别)或者local way (e.g 语言特征的获取)。
+
+------
 
 ### 5. WaveRNN
 
