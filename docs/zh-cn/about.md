@@ -42,6 +42,10 @@
 |2023-12-29            |  MelGAN |
 |2024-01-03            |  Multi Band-MelGAN |
 |2024-01-06            |  Parallel WaveGAN |
+|2024-01-08            |  WaveNet |
+|2024-01-08            |  WaveRNN |
+
+
 
 
 
