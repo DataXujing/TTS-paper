@@ -1030,7 +1030,7 @@ $$T(u)=\frac{|u|}{B}\sum^{N}_ {i=1}(c(op^B_i)+d(op^B_i)) (公式3)$$
 
 !> WaveGrad 源码 https://github.com/lmnt-com/wavegrad
 
-!> FastDiff, NaturalSpeech2都是近期基于Diffusion的Vocoder!
+<!-- !> FastDiff, NaturalSpeech2都是近期基于Diffusion的Vocoder! -->
 
 <!-- https://zhuanlan.zhihu.com/p/417306113 -->
 <!-- https://liu-feng-deeplearning.github.io/2022/08/22/ddpm%E4%B8%8EwaveGrad%E8%A7%A3%E6%9E%90/ -->
@@ -1116,7 +1116,7 @@ WaveGrad 的一个优化是对推理步骤，正常来讲 `T=1000`，这样一�
 
 ------
 
-### 7. HiFiGAN V1/V2
+### 7. HiFiGAN V1/V2: Generative Adversarial Networks for Efficient and High Fidelity Speech Synthesis
 
 !> v1: https://arxiv.org/abs/2006.05694
 
@@ -1126,18 +1126,276 @@ WaveGrad 的一个优化是对推理步骤，正常来讲 `T=1000`，这样一�
 
 !> V2: https://pixl.cs.princeton.edu/pubs/Su_2021_HSS/Su-HiFi-GAN-2-WASPAA-2021.pdf
 
+!> https://github.com/jik876/hifi-gan
+
+!> https://jik876.github.io/hifi-gan-demo/
 
 <!-- https://zhuanlan.zhihu.com/p/420863816 -->
 
+#### 1.背景
 
+GANs已经被用于raw waveforms的生成（vocoder阶段，类似于从梅尔谱到最终的音波，声音文件的阶段）。但是：效果上还赶不上（1）自回归vocoder，(2)流（flow）方法。本论文提出来HiFi-GAN，其（1）高效，（2）高保真，地实现“语音合成”。核心的点：`modeling periodic patterns of an audio -> enhancing sample quality`，即：对语音中的“周期模式”进行建模，从而可以提升样本质量。
+
+效果：MOS上，可以类比人的水平！并且可以在单个V100 GPU上，生成比真实时间快167.9倍的22.05kHz的语音！也就是说，生成1秒的语音，只需要大概1/168=0.006秒的时间。这个真实太赞了！是面向实际应用的！此外，即使是在CPU上，（缩减版的）HiFi-GAN也可以产生比真实时间快13.4倍的语音。而且这个语音的质量可以媲美“自回归模型”。
+
+#### 2.HiFi-GAN
+
+HiFi-GAN由一个生成器，两个判别器构成。一个判别器负责multi-scale，多尺度；一个判别器负责multi-period，多周期。生成器和两个判别器是通过对抗学习的方法训练的，新增加了两个损失函数来提高训练的稳定性和提高模型的性能。
+
+##### 2.1 生成器
+
+生成器是一个“纯的”卷积神经网络。输入是梅尔谱，然后一直用卷积（transposed convolutions）来上采样，一直到输出的序列的长度和原始波形的时域分辨率相同为止。每个transposed convolution的后面，接的是一个multi-receptive field fusion (MRF)【多感受野融合】模块。下图是生成器的示意图。注意，白噪声没有作为该生成器的输入。（即，输入只有梅尔谱）
+
+<div align=center>
+    <img src="zh-cn/img/ch7/07/p1.jpg" /> 
+    <p>HiFi-GAN中的生成器的示意图；注意：这是在说，Dr是有三个维度，具体取值可以参考Table 5，例如[[1,1], [3,1], [5,1]])</p>
+</div>
+
+**生成器中的MRF:** Multi-Receptive Field Fusion(MRF)，多“感受野”融合模块。
+
++ MRF输出的是，多个残差块（$|k_r|$个块）的输出的“相加”（上图中的那个“圆圈+”号！）；
++ 每个残差块，使用不同的kernel size，以及膨胀率(dilation rates），从而构成多样的“感受野”模式。
+
+上图中，也绘制了，第$n$个残差块的样子（最右边）： 
++ 首先，$m$遍历从$1$到$|D_r[n]|$（第$n$个残差块的最大膨胀率）；其次，$l$遍历从1到$|D_r[n, m]|$； 
++ 然后，历经一个Leaky ReLU，和一个卷积，其kernel size为：$k_r[n] \times 1$，而且膨胀率为$D_r[n, m, l]$(注意：这是在说，$D_r$是有三个维度，具体取值可以参考Table 5，例如`[[1,1], [3,1], [5,1]]`)；
++ 最后，有个“圆圈+”的残差运算。
+
+这里面，有几个可调节的参数：
+
++ 隐层维度，$h_u$；
++ transposed卷积的核函数尺寸，$k_u$；
++ MRF中的卷积的核函数尺寸，$k_r$；
++ MRF中的膨胀率$D_r$。
+
+这几个参数的取值，都可以根据“合成效率”和“样本质量”的平衡来进行调节。
+
+> 这个MRF的设计，还是很赞的，感觉糅合了多个size的卷积，以及多种膨胀率，从而可以更好地从不同的窗口来提炼梅尔谱的特征信息，用于生成最后的原始音波。简单总结：“很胖”！
+
+不少细节，还不清晰,看看他们的附录A里面的图，和关于四种参数的取值的例子。
+
+<div align=center>
+    <img src="zh-cn/img/ch7/07/p2.jpg" /> 
+    <p>生成器的图的细化版本。把MRF的周边，绘制的更详细了</p>
+</div>
+
+上面是细化后的生成器的图。可以看到，把MRF的周边（前后）绘制的更加详细了。特别是：
++ 进$|k_u|$个模块之前的，一个`7*1`的卷积层，其膨胀率为1，$h_u$个channel；
++ 出来的时候，先走Leaky ReLU；
++ 然后又是一个`7*1`的卷积，1个channel；
++ 最后走一个非线性激活函数:$Tanh(\cdot)$。
+
+然后看一下四种参数的取值：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/07/p3.png" /> 
+    <p>三种不同配置下的生成器，以及分别的hu, ku, kr, Dr的取值</p>
+</div>
+
+可以看到：
++ 隐层维度$h_u$；这个的取值，是一个标量，例如512, 128, 以及256
++ Transposed卷积的核函数尺寸$k_u$；这是一个列表集合，那么生成器中的$l=1, 2,3,4$，即一共四个`[leaky ReLU + Transpose 卷积+MRF]`的“块”，然后，每个“块”里面的卷积的kernel size的取值为`16, 16, 4, 4`。即：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/07/p4.jpg" /> 
+    <p>V1配置下的生成器的展开示意图</p>
+</div>
+
++ MRF中的卷积的核函数尺寸$k_r$；列表集合。这是“并行”三种卷积，卷积核大小分别为`3,7,11`。卷积之后，相加。
++ MRF中的膨胀率$D_r$。这个值是三个维度为`(3,3,2)`的张量。
+
+把上面两个点结合起来，并且进一步在V1配置下，展开生成器的一个MRF的构造为：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/07/p5.jpg" /> 
+    <p>一个MRF的展开示意图，三个残差块，每一块又分别展开成三个部分，每个部分里面，又包括了“两次”“leay ReLU+卷积层”的重复</p>
+</div>
+
+上图，是一个MRF的展开示意图：
++ 三个残差块，
++ 每一块又分别展开成三个部分，
++ 每个部分里面，又包括了“两次”“leay ReLU+卷积层”的重复。卷积层的卷积核的size，取值分别为`3，5，11`。膨胀系数分别为`1，3，5`。
+
+如此，就实现了“多感受野”下，对最初的输入的梅尔谱的特征进行建模的目的。
+
+##### 2.2 判别器
+
+识别真实语音中的“长距离依赖”是TTS中比较关键的点。例如，一个“音素”可能持续100ms（0.1秒），这就涉及到2200个采样点的相互关联的建模的问题。也就是说，第一个采样点和最后一个采样点，都属于这个“音素”，那么他们之间也存在所谓“长距离依赖关系”。之前的工作，为了解决上面的长距离依赖问题，有使用扩张“感受野”的方法。但是，本文中，关注的是另外一个问题！而这个问题目前为止还没有被好好研究对待过。这就是，多种周期的正弦波，是合成一个语音的核心要素！（考虑傅里叶变换的时域到频域的转换！）即：**语音数据里面的多样的周期模式（diverse periodic patterns），需要被建模**。
+
+故此，本文提出了**MPD: multi-period discriminator（多周期判别器）**。它包括几个“子判别器”，每个判别器负责一部分周期信号。更进一步，为了更好地捕捉连续的patterns，以及长距离依赖，本文也使用**multi-scale discriminator（MSD）**，这个是在MelGAN (Kumar+2019)里面被提出来的。
+
+<div align=center>
+    <img src="zh-cn/img/ch7/07/p7.png" /> 
+    <p>MPD with period $p$</p>
+</div>
+
+通过MPD和MSD的相结合，本文的判别器，和生成器一起，取得了更好的效果。再回顾一下MelGAN的架构（生成器和判别器的样子）：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/07/p6.jpg" /> 
+    <p>MelGAN中的生成器和判别器</p>
+</div>
+
+这个生成器和判别器（若干个）中规中矩。生成器中主要是残差网络+上采样卷积的架构。判别器中，主要是下采样加卷积。
+
+然后，本文使用的特征匹配Loss (feature matching loss)，在MelGAN中也更早用到了：
+
+$$\mathcal{L}_ {FM}(G,D_k)=\mathbb{E}_ {x,s\sim p_{data}}[\sum^{T}_ {i=1}\frac{1}{N_i}||D^{(i)}_ {k}(x)-D^{(i)_ {k}(G(s))}||_ 1]$$
+
+**判别器中的MPD**: MPD是若干“子判别器”的混合。每个“子判别器”只接受一个输入语音的“等间隔的样本”（equally spaced samples? 这个是啥意思？）这个space的“周期”被给定为p【何意？】。 ”子判别器“设计的目的，就是捕捉一个输入语音的不同部分的不同的（区分于其他部分的）隐含的结构。这里的周期被设置为`[2,3,5,7,11]`，从而避免重叠。
+
+如下图(b)所示，我们首先把一维度的长度为$T=12$的（例如，$T$个frames）原始语音信号，塑型为二维的数据，其宽度为$p=3$，高度为$T/p=12/3=4$（只不过，这里的“宽度”是行的个数；“高度”是列的个数。）。然后，在这个二维数据上应用2D卷积。
+
+<div align=center>
+    <img src="zh-cn/img/ch7/07/p8.jpg" /> 
+    <p>MSD和MPD的“子模块”的示意图</p>
+</div>
+
+在应用二维卷积到这个`[3, 4]`的矩阵的时候，我们限制在width轴上（即宽度上）的核函数size=1，从而保证每行之间“互不干扰”。这也对应了，”独立地处理周期性的样本（process the periodic samples independently）“这个”初心“。形式化的表示就是：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/07/p9.jpg" /> 
+    <p>右上部分，给出了`k=3`的时候，所谓`k*1=3*1`的卷积的应用范围（红色矩形框)</p>
+</div>
+
+每个”子判别器“中，堆砌了若干`【带步幅的卷积层，以及使用Leaky ReLU激活】`。随后，weight normalization应用于MPD。通过把输入语音信号重塑为二维数据，而不是对语音的周期性信号进行采样，MPD的梯度可以被传播到输入语音的每个时间步。【也就是说，如果是采样的话，那么无法保证每个时间步都被选择，从而也无法保证每个时间步都被更新梯度】
+
+**判别器中的MSD:** 
+
+`MSD=multi-scale discriminator`，多刻度判别器。 鉴于MPD只接受没有交集的（不同周期的）样本点，我们还需要引入MSD从而可以连续地评估（real/fake分类）语音序列。MSD包括了三个”子判别器“，分别在不同的输入刻度上运算：
++ 原始语音；
++ 进行了$\times 2$ average-pool的语音；
++ 进行了$\times 4$ average-pool的语音。
+
+如上面的图中的(a)所示。【数了一下，上图中，应该是4个点进行一次”平均池化“，那不应该是第三个”子判别器“吗？】。 MSD中的每个子判别器，是若干，带步幅的，group的卷积层，加上Leaky ReLU激活函数。判别器的size，通过减小步幅以及增加更多的层数，来被增大。
+
+第一个子判别器，直接作用到原始的语音信号；而且这个子判别器中没有用weight normalization（权重标准化），而是用的谱标准化（spectral normalization，Miyato+ 2018)。据报告，使用谱标准化，可以使得训练更加稳定。【赞！稳定最重要，一般训练GAN，经常出现不稳定的问题。。。】。后续的两个”子判别器“，都应用了权重标准化。
+
+也就是说，MPD是在原始音波的无交集的采样点上执行运算；但是，MSD是在平滑后的波形上面执行运算。两者有相辅相成之妙。
+
+<div align=center>
+    <img src="zh-cn/img/ch7/07/p10.jpg" /> 
+    <p>MPD中的周期为p的一个”子判别器“的展开图</p>
+</div>
+
+上图中，给出了MPD中的周期为p的一个”子判别器“的展开图。鉴于$l=1,2,3,4$，所以有四个”卷积+Leaky ReLU“的模块的堆积。（居然没有残差。。。）。之后，是一个`5*1`的卷积，而且channels=1024。再接一个leaky ReLU和一个`3*1`的卷积（输出channel=1，对应了real/fake的判别）之后结束。
+
+#### 3.损失函数
+
++ 判别器：真实samples分类为1，而来自生成器的分类为0；
++ 生成器：尽量欺骗判别器，使得自己产出的波形被判定为越接近1越好。【类似于，”假钞“造的越逼真越好！】
+
+<div align=center>
+    <img src="zh-cn/img/ch7/07/p11.jpg" /> 
+    <p>被拆开的两个损失函数，都是期望最小化</p>
+</div>
+
+上面是通过注释的方式，简单解释了一下，论文中的两个损失函数。
+
++ $L(D; G)$是从$D$，即判别器，的角度来看的；
++ $L(G; D)$是从$G$，即生成器，的角度来看的。
+
+**梅尔谱Loss:**
+
+<div align=center>
+    <img src="zh-cn/img/ch7/07/p12.jpg" /> 
+    <p>梅尔谱损失函数，比较的是reference 语音的梅尔谱和通过生成器自动生成的梅尔谱之间的1-范数</p>
+</div>
+
+上面给出了，梅尔谱损失函数，比较的是reference 语音的梅尔谱和通过生成器自动生成的梅尔谱之间的1-范数。这个损失函数，有助于生成器来根据一个输入的条件（an input condition）来合成一个真实世界的音波。并且可以稳定训练过程的早期阶段。这个Loss只用于G，即生成器的”质量控制“。
+
+**特征匹配Loss:**
+
+<div align=center>
+    <img src="zh-cn/img/ch7/07/p13.jpg" /> 
+    <p>特征匹配Loss，对于G来说，当然是希望求和公式里面的1-范数的值，越小越好</p>
+</div>
+
+上面的公式中，$T$表示判别器中的层数。（这个有点不太好，最好用其他字母表示。。。因为前面，$T$已经是输入的音波的长度了。。。）。目的也是尽量让判别器在中间阶段，都不要”跑偏“：即，D的每个神经网络层都分不清”真币“和”假币“，那才对G最好了。
+
+**最终的Loss：**
+
+<div align=center>
+    <img src="zh-cn/img/ch7/07/p14.jpg" /> 
+    <p>生成器的Loss是三合一；判别器的不变</p>
+</div>
+
+这里面有两个超参数，其中$\lambda_{fm}=2, \lambda_{mel}=45$。（45，这个有点诡异。。。）
+
+考虑到，本文是使用了若干个（$K$个）判别器，那么上面的损失函数，还需要考虑多个D的情况。也就是说，我们需要在每个D出现的时候，把一个D，扩展为$k=1...K$个D。也就是说：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/07/p15.jpg" /> 
+    <p>Loss的一个D被扩展为$k=1...K$个D的展开式</p>
+</div>
+
+从公式（5），（6），过滤到（7），（8）没啥难度。
+
+#### 4.实验
+
+数据：LJSpeech data，这个是经典的英文数据了。包括13100个短的audio clips，大概24小时（单人女性）。22kHz，而且是16-bit PCM。
+
+SOTA基线包括了：
++ MoL wavenet;
++ waveglow
++ melgan
+
+单张NVIDIA V100 GPU.
+
+精度和速度：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/07/p16.png" /> 
+    <p>HiFi-GAN和几个SOTA基线的对比，可看到，在精度和速度上都有优势</p>
+</div>
+
+上面的表格，给出了MOS和速度的评估。HiFi-GAN和几个SOTA基线的对比，可看到，在精度和速度上都有优势！不过明显WaveNet和WaveGlow的结果，比他们的各自论文里面的结果要差一些的样子。
+
+
+消融实验：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/07/p17.png" /> 
+    <p>消融实验分析，去掉MPD之后，效果下降最厉害</p>
+</div>
+
+上面的表格是消融实验分析。可以看到，MPD的作用最不能被无视！
+
+扩展到未知speakers：
+
+VCTK数据集下，9个speakers的50个语音。
+
+<div align=center>
+    <img src="zh-cn/img/ch7/07/p18.png" /> 
+    <p>新speakers下的效果评估，HiFi-GAN已经非常接近于真实的Ground Truth了</p>
+</div>
+
+可以看到，新speakers下的效果评估，HiFi-GAN已经非常接近于真实的Ground Truth了，赞一个！
+
+端到端语音合成：
+
+效果在上面的Table 4中。这里是用了Tacotron2作为生成梅尔谱的工具。可以看到，HiFi-GAN还是非常接近ground truth的！
+
+#### 5.总结和思考
+
+本文有几个特点，
++ 一则是大量用了卷积网络，大大加快了解码速度，并且还能保证精度。
++ 二则，提案了基于periods的MPD判别器，可以很好地对和周期相关的特征进行建模。并且引入了多尺度判别器。两者结合，MPD+MSD，效果更好。
++ 三则，在生成器中，新增加了两个损失函数，一个是梅尔谱的相似度计算，另外一个是判别器的内部各层的特征值的比较，从而尽量保证，让判别器的各层都”犯迷糊“！
++ 最后，无论是精度还是速度，特别是参数规模，都显著好于几个SOTA的baselines。
+
+本文的idea值得用！
+
+------
 
 <!-- ### 8. UnivNet
 
 !> https://arxiv.org/abs/2106.07889
  -->
-### 8. WaveGlow
+### 8. WaveGlow: A Flow-Based Generative Network for Speech Synthesis
 
 !> https://arxiv.org/pdf/1811.00002.pdf
 
 <!-- https://zhuanlan.zhihu.com/p/355219393 -->
 <!-- https://blog.csdn.net/weixin_42721167/article/details/115493648 -->
+
