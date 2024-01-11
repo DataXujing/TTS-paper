@@ -1,5 +1,6 @@
 ## 其他
 
+这一部分我们会以实战的方式详细的介绍如何使用Pytorch, paddlepaddle,elmo和一些开源的语音克隆算法实现从训练TTS模型，语音克隆模型到部署TTS模型的过程。
 
 <!-- 
 1.在pytorch下训练一个TTS模型
@@ -208,7 +209,7 @@ paddlespeech更多模型介绍参考： <https://github.com/PaddlePaddle/PaddleS
     - WaveGrad
     - DiffWave
 
-PaddleSpeech TTS 主要实现了百度的 WaveFlow 和一些主流的 GAN Vocoder, 在粤语TTS中，使用 Parallel WaveGAN 作为声码器
+PaddleSpeech TTS 主要实现了百度的 WaveFlow 和一些主流的 GAN Vocoder, 在粤语TTS中，我们使用 HiFi-GAN 作为声码器，这也是目前主流的商用的声码器。
 
 <div align=center>
     <img src="zh-cn/img/ch9/01/p7.png" width=70%/> 
@@ -227,6 +228,14 @@ PaddleSpeech TTS 主要实现了百度的 WaveFlow 和一些主流的 GAN Vocode
 
 PaddleSpeech r1.4.0 版本还提供了全流程粤语语音合成解决方案，包括语音合成前端、声学模型、声码器、动态图转静态图、推理部署全流程工具链。语音合成前端负责将文本转换为音素，实现粤语语言的自然合成。为实现这一目标，声学模型采用了基于深度学习的端到端模型 FastSpeech2 ，声码器则使用基于对抗神经网络的 HiFiGAN 模型。这两个模型都支持动转静，可以将动态图模型转化为静态图模型，从而在不损失精度的情况下，提高运行速度
 
+**0.环境搭建**
+
+```
+pip install paddle-gpu
+git clone https://gitee.com/paddlepaddle/PaddleSpeech
+cd PaddleSpeech
+git install . --user
+```
 
 
 **1.构建数据集**
@@ -236,30 +245,168 @@ PaddleSpeech r1.4.0 版本还提供了全流程粤语语音合成解决方案，
 + https://magichub.com/datasets/guangzhou-cantonese-scripted-speech-corpus-daily-use-sentence/
 + https://magichub.com/datasets/guangzhou-cantonese-scripted-speech-corpus-in-the-vehicle/
 
-下载完成后合并数据集：
+下载后的元数据结构如下图所示：
 
-```
-mkdir -p 
-
-```
-
+<div align=center>
+    <img src="zh-cn/img/ch9/01/p9.png" /> 
+</div>
 
 
 **2.训练MFA模型**
 
+MFA只在训练的时候用到，推理的时候只需要通过预测的duration做对齐就可以了。
 
-**3.**
++ Kaldi MFA： https://github.com/MontrealCorpusTools/Montreal-Forced-Aligner
++ Paddle调用MFA生成对齐的数据：https://github.com/PaddlePaddle/PaddleSpeech/tree/develop/examples/other/mfa
+
+训练数据的对齐数据如下所示：
 
 
+
+<div align=center>
+    <img src="zh-cn/img/ch9/01/p10.png" /> 
+</div>
+
+有了这些数据我们局可以对这些数据进行处理训练声学模型，在这里我们仅训练了声学模型，声码器使用了在CSMSC 数据集（中文标准女声音库）上训练的HiFi-GAN,而没有对该模型进行重新训练或微调。
+
+
++ textgrid: https://textgrid.org/en/download
++ praat: https://www.fon.hum.uva.nl/praat/
+
+使用praat工具打开如下图所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch9/01/p13.png" /> 
+</div>
+
+
+**3.数据预处理**
+
++ 由MFA得到的textgrid生成音素级别的duration
+
+```shell
+echo "Generate durations.txt from MFA results ..."
+python3 ${MAIN_ROOT}/utils/gen_duration_from_textgrid.py \
+    --inputdir=./canton_alignment \
+    --output durations.txt \
+    --config=${config_path}
+```
+
++ 音频特征提取
+
+详细的参考`\paddlespeech\t2s\exps\fastspeech2\preprocess.py`
+
+```shell
+echo "Extract features ..."
+python3 ${BIN_DIR}/preprocess.py \
+    --dataset=canton \
+    --rootdir=~/datasets/canton_all \
+    --dumpdir=dump \
+    --dur-file=durations.txt \
+    --config=${config_path} \
+    --num-cpu=20 \
+    --cut-sil=True
+```
+
+1. 划分训练集，开发集，测试集
+2. 提取音频的mel谱，Pitch, Energy
+3. 得到每个音频的如下特征：
+
+```json
+ record = {
+        "utt_id": utt_id,
+        "phones": phones,
+        "text_lengths": len(phones),
+        "speech_lengths": num_frames,
+        "durations": durations,
+        "speech": str(mel_path),
+        "pitch": str(f0_path),
+        "energy": str(energy_path),
+        "speaker": speaker
+    }
+
+```
+
++ 特征标准化
+
+详细的参考`\paddlespeech\t2s\exps\fastspeech2\normalize.py`
+
+主要是将mel谱，pitch, energy进行标准化，使用了sklearn中的`StandardScaler`方法实现。
+
+最终处理的用来训练FastSpeech2的数据结构为：
+
+```shell
+dump
+├── dev
+│   ├── norm
+│   └── raw
+├── phone_id_map.txt
+├── speaker_id_map.txt
+├── test
+│   ├── norm
+│   └── raw
+└── train
+    ├── energy_stats.npy
+    ├── norm
+    ├── pitch_stats.npy
+    ├── raw
+    └── speech_stats.npy
+```
+
+这里的`raw`文件夹中包含了每个样本的speech,pitch,energy的特征，`norm`文件夹存放了标准化的版本， `*_stats.npy`统计了训练集中的对应特征的均值和方差等统计信息，用来归一化`dev`和`test`数据。
+
+**4.声学模型训练**
+
+section 3中的数据处理仅仅是将数据处理为训练模型需要的标注数据格式并不涉及TTS的前端处理，paddlespeech也帮我们实现了一些TTS前端的方法，详细的可以参考：`paddlespeech\t2s\frontend`,这个过程在我们构建MFA时已经完成。
+
+有了训练标注数据，我们就可以训练粤语的TTS声学模型FastSpeech2了！
+
+参考：`\paddlespeech\t2s\exps\fastspeech2\train.py`
+
+```shell
+python3 ${BIN_DIR}/train.py \
+    --train-metadata=dump/train/norm/metadata.jsonl \
+    --dev-metadata=dump/dev/norm/metadata.jsonl \
+    --config=${config_path} \
+    --output-dir=${train_output_path} \
+    --ngpu=2 \
+    --phones-dict=dump/phone_id_map.txt \
+    --speaker-dict=dump/speaker_id_map.txt
+
+```
+
+这样就可以正常训练声学模型FastSpeech2了！
+
+!> 注意：这里的实现与原始的FastSpeech2不同的地方时增加了支持Multi-speacker的speaker embedding!
+
+!> 训练好的模型可以转onnx参考： https://www.paddlepaddle.org.cn/documentation/docs/zh/2.5/guides/advanced/model_to_onnx_cn.html
 
 #### 4.粤语TTS系统的流式推断
 
+这里我们做短文本的推断，暂时不介绍流式的TTS推断服务的搭建。我们实现的过程如下图流程图所示，这也是一个常用的完整的TTS服务需要的过程！
 
+我们实现了如下的推理流程：
 
-
+<div align=center>
+    <img src="zh-cn/img/ch9/01/p11.png" /> 
+</div>
 
 
 #### 5.Demo Time
+
+
+<div align=center>
+    <img src="zh-cn/img/ch9/01/p12.png" /> 
+</div>
+
+
+其效果如下：
+
+<div align=center>
+    <audio id="audio" controls="" preload="none" >
+          <source id="wav" src="zh-cn/img/ch9/01/fa1cc3d2_afde_11ee_8f0e_00d861c69d42.wav">
+    </audio>
+</div>
 
 
 ------

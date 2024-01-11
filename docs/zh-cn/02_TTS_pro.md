@@ -96,6 +96,8 @@ Spanish -->
 |3	|DiDiSpeech|	500人60小时	|<https://outreach.didichuxing.com/research/opendata/>|
 |4	|OpenSLR|	提供各种语言的合成、识别等语料	|<https://www.openslr.org/resources.php>|
 |5	|zhvoice|	3200说话人900小时，用于声音复刻，合成，识别等	|<https://github.com/fighting41love/zhvoice>|
+|6	|CSMSC 数据集|	中文标准女声音库(10000句),12个小时，女；20-30岁；声音积极知性 采样率为48KHz、16bit	|<https://test.data-baker.com/data/index/TNtts/>|
+
 
 
 + TTS english
