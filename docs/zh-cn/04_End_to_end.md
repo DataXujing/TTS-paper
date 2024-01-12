@@ -1,5 +1,15 @@
 ## End-to-End Models
 
+完全端到端的模型，输入文本特征直接输出音频波形如下图所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch4/01/p1.png" /> 
+</div>
+
+<div align=center>
+    <img src="zh-cn/img/ch4/01/p2.png" /> 
+</div>
+
 ### 1. VITS / VITS2
 
 
