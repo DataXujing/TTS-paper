@@ -1405,6 +1405,8 @@ VCTK数据集下，9个speakers的50个语音。
 <!-- https://zhuanlan.zhihu.com/p/355219393 -->
 <!-- https://blog.csdn.net/weixin_42721167/article/details/115493648 -->
 
+如果想很好的理解WaveGlow需要多wavenet和flow based的生成模型有深入的理解！
+
 #### 1.引言和简介
 
 首先看名字waveglow，融合了wavenet和glow两个工作的新的神经网络架构。其中wavenet中的膨胀卷积层，仍然在waveglow中被使用。而glow的思想也被使用：基于流模型的（基于梅尔谱为memory指导的）一系列对正态噪音的建模构建最终的语音信号的输出。 目的：to provide fast, efficient, and high-quality audio synthesis。更快，更高效，以及更高质量的语音信号的输出。
