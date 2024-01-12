@@ -6,6 +6,8 @@ TTS的工作主要是把文本信息转成音频信息，其大致流程分为�
 本部分我们介绍声码器的一些paper,主要是基于神经网络的神声码器的介绍。
 <!-- https://zhuanlan.zhihu.com/p/321798376 -->
 
+目前基于神经网络的Vocoder主要有三种技术：基于GAN的，基于Diffusion的，基于Flow的，我们将介绍这3种方式的经典的paper。
+
 ------
 
 ### 1. MelGAN: Generative Adversarial Networks for Conditional Waveform Synthesis
@@ -1525,7 +1527,7 @@ $$log p_{\theta}(x)=logp_{\theta}(z)+\sum_{i=0}^{k}log|det(\mathcal{J}(f_i^{-1}(
 下面的整体对数相似度函数的公式略微有瑕疵：
 
 <div align=center>
-    <img src="zh-cn/img/ch7/08/p10.png" /> 
+    <img src="zh-cn/img/ch7/08/p10.jpg" /> 
 </div>
 
 上面的红色文字和线，代表了修正之后的部分。首先$j$和$k$都应该是从1开始，一共12层”仿射耦合层“，和12层”`1*1`卷积层“。然后这里的$(x, mel\_spectrogram)$是不需要的，只要有 $s_j$的1-order范数的值的绝对值就可以了。（这里估计不容易理解，还是后续结合代码的时候，再详细讲解。）。当然，$W_k$ 
