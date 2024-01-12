@@ -47,6 +47,8 @@
 |2024-01-10            |  WaveGrad |
 |2024-01-11            |  HiFi-GAN |
 |2024-01-11            |  paddlespeech粤语语音合成 |
+|2024-01-12            |  WaveGlow |
+
 
 
 
