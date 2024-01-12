@@ -1396,6 +1396,587 @@ VCTK数据集下，9个speakers的50个语音。
 
 !> https://arxiv.org/pdf/1811.00002.pdf
 
+!> https://github.com/NVIDIA/waveglow
+
+!> 基于流的生成模型： https://zhuanlan.zhihu.com/p/351479696
+
 <!-- https://zhuanlan.zhihu.com/p/355219393 -->
 <!-- https://blog.csdn.net/weixin_42721167/article/details/115493648 -->
 
+#### 1.引言和简介
+
+首先看名字waveglow，融合了wavenet和glow两个工作的新的神经网络架构。其中wavenet中的膨胀卷积层，仍然在waveglow中被使用。而glow的思想也被使用：基于流模型的（基于梅尔谱为memory指导的）一系列对正态噪音的建模构建最终的语音信号的输出。 目的：to provide fast, efficient, and high-quality audio synthesis。更快，更高效，以及更高质量的语音信号的输出。
+
+可圈可点之处:
+
++ 其一，只有一个损失函数，而且其就是最大化training data的分布的likelihood——最大似然估计。而且是直接针对训练数据的最大似然估计！这就使得整个训练过程简单而稳定。（相对应的，例如GAN这样的生成式网络的训练，就存在训练不稳定的问题）；
++ 其二，inference的速度足够快，例如基于开源pytorch的实现，在NVIDIA V100 GPU上，可以达到实时生成最大500kHZ的采样率的声音；
++ 其三，并且训练数据的构造，是无监督的方法=有了语音之后，就可以自动地从语音截取片段（例如一秒长度），然后转换成梅尔谱。之后，<梅尔谱，语音信号>的pairs，就可以作为waveglow的训练数据了。是不是想要多少要多少？！（因为不涉及文本方面的输入！）；关于“梅尔谱”的细节，可以参考：<https://zhuanlan.zhihu.com/p/356364039>
++ 其四，效果足够好，在MOS (mean opinion scores - 人工评价得分）下和已有的wavenet的实现效果基本持平（实际根据情况而定，还有若干差距）。好在速度足够快。
+
+#### 2.理论基础
+
+直接上关于waveglow的模型介绍，会有若干公式，尽量通过例子来把他们讲清楚，理解清楚。出场人物：
+
+其一，$z\sim N(z;0,I)$ ，符合（高维）标准高斯分布的白噪声输入，其均值为0，方差矩阵为单位矩阵。维度未定，例如100维，等等；
+
+其二，$x=f_0 \circ  f_1 \circ ... f_k(z)$，语音信号的输出，这里省略了conditioned on a mel-spectrogram（基于输入的梅尔谱作为限制条件，从白噪声z，来逐步生成语音信号序列x=inference的过程）。
+
+其三，$f$ 从$k$到$0$，是一系列的神经网络（函数），一个$f_i$是负责把一个输入张量$z_i$进行一次非线性变换得到$z_{i-1}$。类似如下的示意图：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/08/p1.jpg" /> 
+</div>
+
+上图展示的是inference的过程！即，从白噪音逐步得到想要的语音信号的过程。特别需要注意两个边界条件，左边的一个是起点，有 
+$z=z_k$，纯白噪声（高斯分布），最右边的一个是根据最后一个函数$f_0$ ，其负责把$z_0$再次进行非线性变换，得到最后的 
+$x$作为输出。
+
+而训练的过程，正好和上面的inference的过程相反，训练是给定$x$，去训练一系列函数$f$的逆函数（网络）中的参数，并使得每个$x$经过这一系列（排好顺序的）网络之后，最终得到的都是接近于“高斯分布”的向量。
+
+下面是论文中给出的公式（有瑕疵）：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/08/p2.jpg" /> 
+</div>
+
+上面的公式(4)是ok的，即类似于下图的示意：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/08/p3.jpg" /> 
+</div>
+
+需要注意的是，如果$f_i$的输入是$z_i$，输出是$z_{i-1}$；则其逆函数的输入则是$z_{i-1}$，输出是$z_i$。如上图的黄色箭头所示。
+
+问题出现在公式(3)，首先肯定不是$i=1$到$k$，只有$k$个$f$函数。而是应该有$i=0$到$k$，有$k+1$个$f$函数。其次，不是每次都是用$x$作为输入的，所以 $f_i^{-1}(x)$中的$x$就很突兀了。真实情况如上图，不是每个$f$的逆函数，都是直接用$x$为输入的！
+
+正确的形式应该类似于：
+$$log p_{\theta}(x)=logp_{\theta}(z)+\sum_{i=0}^{k}log|det(\mathcal{J}(f_i^{-1}))|$$
+
+上的公式中省略了每个$f$的逆函数的输入，具体的输入的值，可以参考上图。或者是：
+
+$$log p_{\theta}(x)=logp_{\theta}(z)+\sum_{i=0}^{k}log|det(\mathcal{J}(f_i^{-1}(z_{i-1})))|$$
+
+这里的$z_{-1}=x$,$z_i=f_i^{-1}(z_{i-1})$.
+
+上面公式的第一项 $log p_{\theta}(z)$是高斯分布的对数似然度。第二项则是来自“change of variables"(变量变换定理）使用的是雅可比矩阵的行列式的值。
+
+其实，即使有了上面的公式，距离实现真正的waveglow，中间还差着十万八千里。下面看论文中最神奇的一个图吧，很多其他的讲解，都是基于这个图进行解释的。不过坦白说，这个图，极其不容易理解：
+
+首先需要说的是，这个是”训练“的阶段的图：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/08/p4.jpg" /> 
+</div>
+
+上面的训练阶段示意图中的”登场人物“的简介:
+
++ 第一个，语音向量$x$，这个是来自训练数据的真实的语音向量数据；其会被切分成左右两段，左边的是$x_a$，右边的是$x_b$。（比较细化的问题是，是怎么具体切的呢？有没有具体的例子呢？容后续讲解到代码的时候，详细介绍。）
+
++ 第二个，梅尔谱输入，这里非要加一个upsampled mel-spectrogram（上采样之后的梅尔谱）就说明，在真实的从语音wav文件得到的梅尔谱的基础上，会有一次线性变换，来实现上采样；
+
++ 第三个，一系列的$f$函数的逆函数。注意的是，inference是正用$f$，从$x$到$z$；而训练的时候，是使用的$f$的逆函数，从$z$到$x$。这里边，更加细化为了两个网络层，3.1的可逆`1*1`的卷积，以及3.2的affine coupling layer（仿射耦合层），这两个网络结构，在我之前的文章中有详细的介绍，这里不再详细讲了。后续会结合代码详细介绍。
+
++ 第四个，`WN=wavenet`的实现，$x_a$经过wavenet之后，得到的是两种输出，$t$和$logs$，这里的$logs$其实也不容易理解。简单起见，可以认为输出的就是$t$和$s$，然后在后续使用$s$的时候，用的是 $e^s$
+。如下面的几个公式所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/08/p5.jpg" /> 
+</div>
+
+这里的公式(6)也是有问题的，左边的输出，应该是$(t, logs)$，而不是现在的$(logs, t)$，即得到的从WN的输出里面，前半段给了t，后半段给了logs。
+
++ 第五个，第六个分别是$t$和$logs$了，这个后续在代码阶段详细介绍。
++ 第七个，affine transform，仿射层（可以简单理解为一个linear layer），对应的公式是上面的公式(7)。
++ 第八个，架构图中标注为8.1和1.1的张量相同，都是$x_a$ ，直接copy的结果；另外8.2  $x_{b^{'}}$
+ （图中被绘制成了 $x_b^{'}$，其实应该是 $x_{b^{'}}$）就是根据公式(7)计算得到的了。
+
+在对$x_a$ 和 $x_b$进行串联之后，就是3.2这个仿射耦合层的输出了。
+
+按照个人理解，把上面的四个公式整理为：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/08/p6.png" /> 
+</div>
+
+和普通的基于自回归的wavenet不同的是，这里的wavenet，并没有使用自回归的方式来逐步构造输出序列。后续在介绍代码的时候，会详细介绍其架构。论文中的下面一段讲述，其实并不容易理解：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/08/p7.jpg" /> 
+</div>
+
+可以参考上面的这个雅可比矩阵的样子来理解上面的公式，左上角是单位矩阵，因为$x_a$的前半部分是直接copy到输出的，所以输出相对于输入的偏微分矩阵，得到的就是一个单位矩阵。然后看右上角，是$x_a$（输出）对于$x_b$（输入）的偏微分，因为$x_b$对于$x_a$的构造，没有参与，所以这部分是全0矩阵。当右上角是全零矩阵的时候，左下角是啥，我们也不关心了，反正和右上角相乘之后为0。最后剩下的就是右下角这个关键的部分了。可以简单理解为$x_{b^{'}}$对$x_b$的偏微分矩阵，则基于上面的公式(7)，得到的就是$s$为对角线的（其他非对角线元素都为0）的矩阵。这是因为：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/08/p8.png" /> 
+</div>
+
+从而$x_{b^{'}1}$对 $x_b$的$n$个元素分别进行偏微分的时候，得到的是向量$[s_1,, 0, ..., 0]$，即只有第一个元素为$s_1$ 
+ (向量$s$中的最左边/最上面的元素），其他的元素都为$0$。
+
+继续看`1*1`卷积方面，细节也可以参考我之前的文章。这里直接解释一下论文中的公式：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/08/p9.png" /> 
+</div>
+
+上面的公式(10)就是`1*1`卷积的表示，即直接对$x$进行一个线性变换，就得到结果了（卷积和线性变换的相通性）。这样的话，在计算这个网络（`1*1`卷积）的雅可比矩阵的时候，就是如(11)公式所展示的那样了，就是可训练参数（矩阵）$W$的对应的行列式值的绝对值。
+
+下面的整体对数相似度函数的公式略微有瑕疵：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/08/p10.png" /> 
+</div>
+
+上面的红色文字和线，代表了修正之后的部分。首先$j$和$k$都应该是从1开始，一共12层”仿射耦合层“，和12层”`1*1`卷积层“。然后这里的$(x, mel\_spectrogram)$是不需要的，只要有 $s_j$的1-order范数的值的绝对值就可以了。（这里估计不容易理解，还是后续结合代码的时候，再详细讲解。）。当然，$W_k$ 
+ 这个矩阵的行列式的值，也需要加了绝对值之后，才能传给log函数。
+
+
+#### 3.Waveglow整体代码分析【训练视角】
+
+分别（相对独立地）讲述Train的算法，和Inference的算法：
+
+**先看Train的部分：**
+
+<div align=center>
+    <img src="zh-cn/img/ch7/08/p11.jpg" /> 
+</div>
+
+假设一次mini-batch取12个wav文件，waveglow里面可以设定一个segment的大小，例如default就是16000个采样点（即，无论wav的长度是多少，都是从中随机选择一个长度为16000个点的声音片段）。
+
+得到shape为[12, 16000]的矩阵之后，兵分两路（左右两个箭头）：
+
+左边，经过STFT（短时傅里叶变换，default frame size=1024, hop size=256, 使用hann window function，window size=1024），然后抽取80个mel-scale的filterbanks，可以计算出长度为16000个点的wav，一共有`(16000-frame size)/hop_size + frame.size/hop_size=63`个frame。从而得到的梅尔谱的张量shape为(12, 80, 63)。
+
+继续左边，经历“逆卷积上采样”（可以简单理解为一个upsampling的卷积，或者简化为special linear layer），这里出现了16896这个奇怪的数字，其对应的代码和计算公式为：
+
+```python
+self.upsample = torch.nn.ConvTranspose1d(n_mel_channels, 
+                                                 n_mel_channels, 
+                                                 1024, stride=256) 
+# (1) 80 conv_transpose_1d: 卷积转置1d! 
+#     (反卷积)卷积操作的作用类似神经网络中的编码器，
+#     用于对高维数据进行低维特征提取，
+#     而 反卷积 通常用于将低维特征映射成高维输入，
+#     与卷积操作的作用相反。同时也是一种基于学习的上采样实现方法。
+# (2) 80 
+# (3) kernel_size = 1024. 
+#     (Lin-1)*stride-2*padding+dilation*(kernel_size-1)+output_padding+1
+# =(Lin-1)*256-2*0+1*(1024-1)+0+1=256*Lin-256+1024=256*(Lin-1)+1024 =
+# = 256 * (63-1) + 1024 = 16896. 
+#  这里Lin=输入的sequence的长度。
+```
+
+关于“逆卷积”可以参考：<http://www.suzhengpeng.com/hello-pytorch-01#%E4%B8%80%E7%BB%B4%E5%8F%8D%E5%8D%B7%E7%A7%AF-torchnnconvtranspose1d>
+
+得到16896维度之后，只要前16000个数值（类似对应到最初的16000个wav文件中的采样点），这样就得到了(12, 80, 16000)，其中80表示80个mel-scale filterbanks。这个张量可以（简单地）理解为一个minibatch中有12个序列，每个序列16000个点，每个点使用80维度的一个特征向量(feature vector)表示。
+
+继续左边，再往下，就有点玄幻了，目前还不是很明白其中有什么道理，类似从`(12, 80, 16000)`转成了`(12, 640, 2000)`的张量。关联到的代码如下：
+
+```python
+spect = spect.unfold(2, self.n_group, self.n_group).permute(0, 2, 1, 3) 
+# TODO unfold是干啥的？ [12, 2000, 80, 8] <- [12, 80, 8, 2000]
+spect = spect.contiguous().view(spect.size(0), spect.size(1), -1)
+    .permute(0, 2, 1) 
+# [12, 2000, 640] -> [12, 640, 2000]
+
+audio = audio.unfold(1, self.n_group, self.n_group).permute(0, 2, 1) 
+# [12, 2000, 8] -> [12, 8, 2000] 
+# TODO为什么要分成2000*8呢？8个长度为2000的序列？
+```
+
+得到了这个shape为(12=batch.size, 640, 2000)的代表了“梅尔谱”的张量之后，它会被后续的WaveNet使用，即和经历了`1*1`卷积的wav信息一起，作为WaveNet的输入。
+
+刚才说到花开两朵，各表一枝。现在看右边的这朵花。(12, 16000)这个描述了12个序列，每个序列16000个采样点的数据，经过unfold，以及permute之后，得到shape为(12, 8, 2000)的张量。类似可以理解为每个序列，有8个通道，每个通道上2000个采样点。
+
+右边，之后，会扔给一个“`1*1`的卷积”，里面的Weight的shape是`8*8`的.
+
+经历了这个卷积之后，得到的张量的shape仍然是(12, 8, 2000)，同时，卷积网络会返回`log_det_W`这个值，代表的是$W$矩阵的行列式值的绝对值的对数。这个值是计算loss的时候需要用的。
+
+然后，我们分别按照第一个维度（即，batch size的后面的那个长度为8的维度）进行切割：前半部分`[:, :4, :]`是 $x_a$；后半部分`[:, 4:, :]`是 $x_b$，这两个张量的大小都是(12, 4, 2000)。
+
+这个时候，之前的公式就发挥作用了，我们再看下：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/08/p12.png" /> 
+</div>
+
+其对应的代码是：
+
+```python
+output_audio = []
+log_s_list = [] # 为了最后计算loss
+log_det_W_list = [] # 为了最后计算loss
+
+for k in range(self.n_flows): # 12，类似从f0到f11
+    # k=4, 8 的时候，会有对结果的“收割”：
+    if k % self.n_early_every == 0 and k > 0: # n_early_every=4
+        output_audio.append(audio[:,:self.n_early_size,:]) 
+        # n_early_size=2
+        audio = audio[:,self.n_early_size:,:]
+
+    audio, log_det_W = self.convinv[k](audio) # 1*1的卷积
+    log_det_W_list.append(log_det_W)
+
+    n_half = int(audio.size(1)/2)
+    audio_0 = audio[:,:n_half,:] # audio_0是前半，即x_a
+    audio_1 = audio[:,n_half:,:] # audio_1是后半，即x_b
+
+    output = self.WN[k]((audio_0, spect)) 
+    # spect=梅尔谱(12, 640, 2000)，WN=WaveNet
+
+    log_s = output[:, n_half:, :] # log_s是后半！
+    #另外，俺只是名字叫log_s，不代表俺就是调用了log之后的结果！
+
+    b = output[:, :n_half, :] # b是前半！！！即论文中的t
+
+    audio_1 = torch.exp(log_s)*audio_1 + b # 得到x_b'
+
+    log_s_list.append(log_s) # log_s的shape是(12, 4, 2000)
+
+    audio = torch.cat([audio_0, audio_1],1)
+    # 得到的audio的shape为：[12, 8, 2000]
+
+output_audio.append(audio)
+```
+
+特别的，这段代码中用到了12个`1*1`卷积网络，以及12个WaveNet网络。这两个网络的细化的代码，后续会逐步介绍。特别需要注意的是WaveNet，同时接受来自audio的信息和来自梅尔谱的信息：进一步，在训练的时候，接受的是reference audio信息；而在inference的时候，接受的是noisy audio信息（白噪音）。
+
+一层WaveNet，的输出的张量shape是(12, 8, 2000)，再次对长度为8的那个维度，对半拆开。截取出前半部分是代码中命名为b，且论文中命名为t。其shape为(12, 4, 2000）。而截取出后半部分，命名为`log_s`（不代表就经过了log函数，其实log_s还是一个float参数，和log函数没有直接关系！！）。
+
+再之后，就是使用如下的公式（其有个“高！大！上！”的名字：affine transform - 仿射变换）：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/08/p13.png" /> 
+</div>
+
+来计算新的 $x_{b^{'}}$。这个张量的shape也是(12, 4, 2000)，然后会和最初的 按照`dim=1`进行串联，得到的audio的shape为(12, 8, 2000）。
+
+“天道好轮回”！--- 是否可以注意到，这个在图中被标识为绿色底色的变量，和最初扔给`1*1`卷积的那个张量的形状是一样的呢？！也就是说，之后可以开启`k=1`到`11`的`11`个循环，都是先后经过`1*1`卷积，以及结合了梅尔谱输入的WaveNet。
+
+下面的图，展示了从`k=0`的输出，可以扔给`k=1`的输入；以此类推，`k=1`的输出，扔给`k=2`的输入；`k=2`的输出，扔给`k=3`的输入。`k=3`执行完毕之后，我们得到的audio的shape仍然是(12, 8, 2000)。不过这个audio就是“充分”融合了梅尔谱信息的audio：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/08/p14.jpg" /> 
+</div>
+
+在进入`k=4`的时候，会有一波“收割”（即把audio的维度为8的，前两个维度的值，保存到最终结果中，类似于(12, 2, 2000)存入output_audio），收割之后，剩余的是(12, 6, 2000)会继续参与到`k=4, 5, 6, 7`的四层block中来：
+
+```python
+# k=4, 8 的时候，会有对结果的“收割”：
+if k % self.n_early_every == 0 and k > 0: # n_early_every=4
+    output_audio.append(audio[:,:self.n_early_size,:])
+    # n_early_size=2
+    audio = audio[:,self.n_early_size:,:]
+```
+
+这里的output_audio存放的就是最终网络执行完毕的时候的输出（对应到audio张量）。
+
+<div align=center>
+    <img src="zh-cn/img/ch7/08/p15.jpg" /> 
+</div>
+
+上图中的红色长方块，即表示了(12, 2, 2000)会扔给最终的audio_output，然后剩下的(12, 6, 2000)会扔给`k=4,5,6,7`的四层blocks，（包括一个`1*1`卷积，和一个结合梅尔谱的WaveNet网络）。类似的`k=4`的输出，会作为`k=5`的输入，`..., k=7`的输出，会再次被截断，`[:, :2, :]`会被保存到audio_output，然后剩下的`[:, 2:, :]`会被扔给`k=8,9,10,11`这四层blocks。
+
+相应的，卷积网络中的weight的大小，在`k=8 - 11`的时候，是`4*4`的。类似的图如下：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/08/p16.jpg" /> 
+</div>
+
+当`k=11`执行完毕之后，最后得到的audio的shape是(12, 4, 2000)，它会被扔给output_audio。
+
+如此，output_audio中就包括了三个张量：
+
+第一，`k=3`的输出的前一部分(12, 2, 2000),
+
+第二，`k=7`的输出的前一部分(12, 2, 2000)，以及，
+
+第三，最后`k=11`的输出的(12, 4, 2000)。
+
+然后可以调用`torch.cat(output_audio, dim=1)`这样的方法，得到最终的forward函数的输出张量，shape为（12， 8， 2000），也就是所谓`z`了（服从高维高斯分布的“確率変数”）【输出一】。
+
+除了这个张量，forward函数，还有另外两个输出，分别是：
+
+【输出二】：`log_s_list`，包括了12个`log_s`（张量）：前四个的shape是(12, 4, 2000)；中间四个的shape是（12，3，2000）；最后四个的shape是（12，2，2000）！（为计算loss用的）
+
+【输出三】：`log_det_W_list`，包括了12个标量，每个标量都是一层`1*1`卷积中的weight矩阵的行列式的值的绝对值的对数！（为计算loss用的）
+
+话赶到这里了，正好顺带把waveglow的loss function给过一遍得了：
+
+如下这个损失函数class，在`glow.py`文件里面：
+
+```python
+class WaveGlowLoss(torch.nn.Module): 
+    # 损失函数, negative log likelihood (NLL)
+    def __init__(self, sigma=1.0):
+        super(WaveGlowLoss, self).__init__()
+        self.sigma = sigma #default = 1.0
+
+    def forward(self, model_output):
+        z, log_s_list, log_det_W_list = model_output
+　　　　# 重新温习，z，就是(12, 8, 2000)这样的服从高维球面高斯分布的“自由变量”
+
+        for i, log_s in enumerate(log_s_list):
+            if i == 0:
+                log_s_total = torch.sum(log_s) # log_s_total记录log_s求和结果
+                log_det_W_total = log_det_W_list[i] 
+                # log_det_W_total记录log_det_W求和结果
+            else:
+                log_s_total = log_s_total + torch.sum(log_s)
+                # 直接对log_s这个张量中所有元素求和！（没有绝对值啥的骚操作）
+                # 哦！扔给log函数之前，没有用绝对值？！
+                log_det_W_total += log_det_W_list[i]
+
+        loss = torch.sum(z*z)/(2*self.sigma*self.sigma) 
+                - log_s_total - log_det_W_total 
+
+        # (e.g.,) loss = tensor(694.3699, grad_fn=<SubBackward0>)
+        return loss/(z.size(0)*z.size(1)*z.size(2)) 
+        # 对最终输出的loss值进行normalization处理。
+        # (e.g.,) loss = tensor(0.0036, grad_fn=<DivBackward0>), 694.3699/(12*8*2000)=0.0036
+        # 12=batch.size, 8=seq.length/channel_size, 2000=hidden.size
+```
+
+而上面这个类的forward函数，恰恰就对应了如下的公式：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/08/p10.jpg" /> 
+</div>
+
+特别需要注意一点：代码中并没有所谓$log|s_j|$这样的，先加绝对值，然后扔给log函数的操作啊？为啥呢？这是因为`log_s_j`本身就是一个变量的名字，这个变量就是“一步到位”的（1）保证 $e^{log\_s\_j}$
+ 为正，（2）又保证了不需要直接求 $s_j$
+ （定义个名为`log_s`的变量，然后以后使用 $e^{log\_s}=s$就好了嘛！nb的实现方法！
+
+那$log det|Wk|$需要在det外部有个绝对值吗？还不知道，因为还没有分析WaveNet在这里的详细的架构。
+
+##### 4.【训练视角】详细分析WaveNet的架构和代码
+
+对于WaveNet不是很了解，或者没有仔细研究过WaveNet代码的童鞋，这块其实还是相对比较难的，独立出来一个章节。
+分析的类，是`glow.py`里面的`class WN(torch.nn.Module)`。
+在前面用到了12个WN，从`WN[0]`到`WN[11]`。
+在WaveGlow类中，有12个WN的初始化的方法：
+
+```python
+for k in range(n_flows): 
+    # k=0 to 11. 类似于：0, 1, 2, 3,     
+    #  4[diff], 5, 6, 7,     8[diff], 9, 10, 11
+
+    if k % self.n_early_every == 0 and k > 0: # n_early_every=4
+        n_half = n_half - int(self.n_early_size/2)
+        n_remaining_channels = n_remaining_channels - self.n_early_size
+
+    self.convinv.append(Invertible1x1Conv(n_remaining_channels))
+    # k=0/1/2/3, Invertible1x1Conv(8)
+    # k=4/5/6/7, Invertible1x1Conv(6)
+    # k=8/9/10/11, Invertible1x1Conv(4)
+
+    self.WN.append(WN(n_half, n_mel_channels*n_group, **WN_config))
+    # k=0/1/2/3, n_half=4, WN(4, 80*8, 
+    #        {'kernel_size': 3, 'n_channels': 256, 'n_layers': 8})
+    # k=4/5/6/7, n_half=4-1=3, WN(3, 80*8, 
+    #        {'kernel_size': 3, 'n_channels': 256, 'n_layers': 8})
+    # k=8/9/10/11, n_half=3-1=2, WN(2, 80*8, 
+    #        {'kernel_size': 3, 'n_channels': 256, 'n_layers': 8})
+```
+
+我们先看前4个WaveNet，中的`k=0`的情况：
+
+```python
+# class WN(torch.nn.Module)中的forward方法：
+def forward(self, forward_input):
+    audio, spect = forward_input 
+    # audio=[12, 4, 2000] (i.e., half part), spectrogram=[12, 640, 2000]
+    # 12=batch size; 4=channel number; 2000= hidden size
+    audio = self.start(audio) 
+    # [12, 256, 2000], self.start是4 channels到256 channels的conv1d的网络!
+
+    output = torch.zeros_like(audio) # output=[12, 256, 2000]
+    n_channels_tensor = torch.IntTensor([self.n_channels]) # 256
+
+    spect = self.cond_layer(spect) 
+    # self.cond_layer = Conv1d(640, 4096, kernel_size=(1,), stride=(1,)). 
+    # 因此spect是从[12, 640, 2000]到[12, 4096, 2000]
+    # 4096的时候：4096=16*256；所以分成了八层，
+    # 每一层对应的是2*256个“点”（position?)
+
+    for i in range(self.n_layers): # n_layers=8，i是从0到7
+        spect_offset = i*2*self.n_channels 
+        # 谱的offset, i=0时0; i=1时2*256; i=2时4*256; i=3时6*256; 
+        # i=4时8*256; i=5时10*256; i=6时12*256; i=7时14*256.
+
+        acts = fused_add_tanh_sigmoid_multiply(
+            self.in_layers[i](audio), 
+            # audio=[12, 256, 2000] -> [1, 512, 25472]
+            spect[:,spect_offset:spect_offset+2*self.n_channels,:], 
+            # [1, 512, 25472]
+            n_channels_tensor) # 256
+        # output acts=[1, 256, 25472]
+        res_skip_acts = self.res_skip_layers[i](acts) 
+        # res_skip_acts=[1, 512, 25472]
+
+        if i < self.n_layers - 1: # i<7
+            audio = audio + res_skip_acts[:,:self.n_channels,:] 
+            # audio和res_skip_acts的前半段叠加：得到[1, 256, 25472]
+            output = output + res_skip_acts[:,self.n_channels:,:] 
+            # output和res_skip_acts的后半段叠加，得到[1, 256, 25472]
+        else:
+            output = output + res_skip_acts
+
+    return self.end(output) 
+    # self.end = Conv1d(256, 4, kernel_size=(1,), stride=(1,)). 
+    # output=[1, 256, 25472] -> self.end -> [1, 4, 25472]
+```
+
+<div align=center>
+    <img src="zh-cn/img/ch7/08/p17.jpg" /> 
+</div>
+
+我们分析的就是上面图中的`self.WN[0]`网络。该网络的输入包括，`xa:audio_0`，即前半部分的audio wav过来的信息，以及`up-mel-spec`，即经历过上采样之后的“梅尔谱”信息（类似于memory）。
+
+虽然不太准确，不过这两个输入张量，可以分别简化理解为，audio这边是`batch.size=12`，每个batch有12个序列，每个序列2000个“点”，然后，每个点是用4维特征向量表示；对于`up-mel-spec`，也是类似，`batch.size=12`, 每个batch有12个序列，每个序列2000个“点”，然后每个点使用一个640维度的特征向量表示。
+
+输出的是shape是(12, 8, 2000)的张量，类似于对输入的来自audio的4维特征向量，和来自梅尔谱的640维度特征向量，进行非线性变换，得到一个8维度的新的特征向量。
+
+看一下细化之后的，`self.WN[0]`的网络示意图：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/08/p18.jpg" /> 
+</div>
+
+一个WaveNet网络里面，有8个`in_layers`（其中有“膨胀卷积”）层，以及8个`res.skip.layers`（普通“卷积网络”）层。上图给出的是从forward函数接受输入，到使用了0-th的`in.layers[0]`以及`res.skip.layers[0]`之后的结果。
+
+这里有个比较特殊的函数：`fused_add_tanh_sigmoid_multiply`
+其负责的是，语音数据和梅尔谱数据之间的fusion-融合。融合之后，会经历一次卷积，即使用`res.skip.layers[0]`进行一次2倍化扩展，扩展之后，再次对半切分，前半部分会element-wise加到最初的audio上面，得到新的audio，其shape为(12, 256, 2000)。另外，后半部分会element-wise加到output张量上面。output是全0的，shape为(12, 256, 2000)的张量。
+
+下面看这个特殊的函数：`fused_add_tanh_sigmoid_multiply`的图示化细节：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/08/p19.jpg" /> 
+</div>
+
+上面的浅黄色块（下方），即是这个特殊函数的具体操作方法：先经历一次element-wise加，然后对半截取（按照feature 维度，从512，对半为两个256）。截取之后，分别经过tanh（其取值范围为`[-1, 1]`）和sigmoid（其取值范围为`[0,1]`），然后再经历一次element-wise的乘积。即得到融合后的张量。
+
+在`i=1`的时候，会把`in_layers[1]`中的dilation设置为2，然后padding也设置为2。如下图所示：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/08/p20.jpg" /> 
+</div>
+
+`k=0, n_half=4, n_mel_channels*n_group=640, WN_config={'n_layers': 8, 'n_channels': 256, 'kernel_size': 3}`
+
+依此类推，8个`in_layers`的卷积的定义类似于：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/08/p21.jpg" /> 
+</div>
+
+以及，`res.skip.layers`的8个网络（翻倍channel numbers；注意i=7的时候，是从256到256 channels）类似于：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/08/p22.jpg" /> 
+</div>
+
+最后是`i=6`到`i=7`的时候，以及`i=7`的全过程：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/08/p23.jpg" /> 
+</div>
+
+特别的，当`i=7`的时候，`res.skip.layers[7]`是从256 channels到256 channels。输出结果直接叠加到output张量。之后会走一个self.end，conv1d的卷积，得到的是（12, 8, 2000）的张量。这个张量，就是之前介绍过的下图中的output:
+
+<div align=center>
+    <img src="zh-cn/img/ch7/08/p24.jpg" /> 
+</div>
+
+前四个wavenet，`k=0,1,2,3`都是上面的架构。
+
+到了`k=4,5,6,7`的时候，即中间四个WaveNet，输入的audio方面都修改为了shape为(12, 3, 2000)的张量，相应的在wavnet中，只有`self.start`被修改为从3映射到256 channels的卷积，以及`self.end`是从256映射到6 channels的卷积。其他网络结构保存不变。即，8个`in.layers`，和8个`res.skip.layers`的架构保存一样。
+
+再后来，到了`k=8,9,10,11`的时候，即最后四个WaveNet，输入的audio方面都修改为了shape为(12, 2, 2000)的张量，相应的在wavnet中，只有`self.start`被修改为从2映射到256 channels的卷积，以及self.end是从256映射到4 channels的卷积。其他网络结构保存不变。即，8个in.layers，和8个`res.skip.layers`的架构保存一样。
+
+#### 5.【inference视角】从梅尔谱和高斯噪声生成wave
+
+前面两个部分分别介绍了训练视角的整体waveglow和分块wavenet的网络结构和代码。本部分详细介绍inference的代码分析，即输入的是来自tacotron2得到的梅尔谱，以及高斯噪音，输出的是audio wav文件。
+
+核心思想是对前面的`k=0`到`k=11`个blocks的反向使用，即先经过`k=11`，然后逐步`k-=1`，最后到`k=0`，再经过若干变换，得到最后的audio，保存成`.wav`文件。
+
+<div align=center>
+    <img src="zh-cn/img/ch7/08/p25.jpg" /> 
+</div>
+
+上图给出了，从读取一个梅尔谱文件`（.pt文件）`到分别调用`k=11`的两个子网络：`self.WN[k=11]`，以及`self.convinv[k=11]`（注意这里的`1*1`卷积是`reverse=True`的设置！)。
+
+在类`mel2samp.py`中，有关于如何从wav生成梅尔谱文件`.pt`的方法，这个文件有main函数，可以直接执行。
+
+```python
+audio, sr = load_wav_to_torch(filepath) # 读取.wav文件
+melspectrogram = mel2samp.get_mel(audio) 
+# 调用stft->mel-spec的库方法，得到梅尔谱
+
+filename = os.path.basename(filepath)
+new_filepath = args.output_dir + '/' + filename + '.pt' # 输出.pt文件名
+print(new_filepath)
+torch.save(melspectrogram, new_filepath) # 保存文件
+```
+
+这其中的`mel2samp.get_mel`方法如下：
+
+```python
+def get_mel(self, audio): 
+    # from wav file to mel-spectrogram, 从wav文件到梅尔谱
+    print('get_mel, audio.shape={}'.format(audio.shape)) 
+    # [16000] (不到一秒钟吗?) 如果是22050的话，一秒应该是22050个点！
+    # 和采样率没有直接关系；就是拿出来16000个点
+
+    audio_norm = audio / MAX_WAV_VALUE
+    audio_norm = audio_norm.unsqueeze(0)
+    audio_norm = torch.autograd.Variable(audio_norm, requires_grad=False)
+    melspec = self.stft.mel_spectrogram(audio_norm) # 库方法
+    melspec = torch.squeeze(melspec, 0)
+    print('get_mel, melspec.shape={}\n----\n'.format(melspec.shape)) 
+    # [80, 63]
+    return melspec
+```
+
+更进一步，`self.stft`，来自TacotronSTFT类的方法，其初始化为：
+
+```python
+self.stft = TacotronSTFT(filter_length=filter_length, 
+                         # 1024, frame length
+                         hop_length=hop_length, # 256, jump length
+                         win_length=win_length, # 1024, 
+                         #window-size for hann window
+                         sampling_rate=sampling_rate, # 22050
+                         mel_fmin=mel_fmin, mel_fmax=mel_fmax) 
+                         # 0.0, to, 8000 (Hz) frequency
+```
+
+然后就是一顿操作猛如虎了，例如上采样，之后去掉最后的768个元素，再进行unfold, permute, congituous, view, permute一系列花样，得到是(1, 640, 25472)这样的梅尔谱表示张量。
+
+根据25472，我们可以初始化高维高斯噪音张量了，大小为(1, 4, 25472）。然后就是之前的熟悉的k=0到11的12个blocks的反向使用。这里从k=11开始，逐步经过wavenet，以及`1*1`的卷积的反向使用。最后得到的是张量audio，形状为(1, 4, 25472)。
+
+这里面有意思的是，`log_s`和`b`的切割方法，其实和正向forward是一样的！多么神奇啊！可以参考下图（的F和H）加深理解：
+
+<div align=center>
+    <img src="zh-cn/img/ch7/08/p26.jpg" /> 
+    <p>https://zhuanlan.zhihu.com/p/351479696</p>
+</div>
+
+特别的，当`k=8`的末尾的时候，会在audio的左边追加一个高斯噪音，shape为(1, 2, 25472)。得到新的`audio=torch.cat((z, audio), 1) -> (1, 6, 25472)`。然后继续经历，`k=7，6，5，4`。
+
+当`k=4`的末尾的时候，会在audio的左边追加一个高斯噪音，shape为(1, 2, 25472)。得到新的`audio=torch.cat((z, audio), 1) -> (1, 8, 25472)`。然后继续经历，`k=3,2,1,0`。
+
+最后经历了`k=11 to 0`之后，有下图:
+
+<div align=center>
+    <img src="zh-cn/img/ch7/08/p27.jpg" /> 
+</div>
+
+到此为止，就是把inference的算法框架介绍完毕了。
+
+> 关于gpu, `apex=16`方面的相关知识，可以参考：<https://zhuanlan.zhihu.com/p/343891349>
+> 
+> 本论文解读参考来源于 知乎 迷途小书童 大佬的: <https://zhuanlan.zhihu.com/p/355219393>
+
+------
