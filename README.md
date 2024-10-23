@@ -17,7 +17,7 @@
 - [x] 2.语音合成开源项目和数据集
 - [x] 3.Text-to-spectrogram
 - [ ] 4.End-to-End Models
-- [ ] 3.Vocoders
+- [x] 3.Vocoders
 - [ ] 4.语音克隆
 - [ ] 5.其他
 
