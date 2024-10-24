@@ -94,7 +94,7 @@ Bailing-TTS: https://mp.weixin.qq.com/s/JNjsAgG2PXOK7o0KZD57LA
 
 一些好的开源闭源项目：
 
-!> 该表最新更新时间：2024-10-23
+!> 该表最新更新时间：2024-10-24
 
 |  TTS    |  地址    |
 | ---- | ---- |
@@ -115,6 +115,7 @@ Bailing-TTS: https://mp.weixin.qq.com/s/JNjsAgG2PXOK7o0KZD57LA
 |F5-TTS(\*) | https://github.com/SWivid/F5-TTS |
 |FireRedTTS(\*)（小红书） | https://github.com/FireRedTeam/FireRedTTS |
 |Bailing-TTS | <https://arxiv.org/pdf/2408.00284> <https://giantailab.github.io/bailingtts_tech_report/index.html> |
+|GPT-SoVITS(\*) | https://github.com/RVC-Boss/GPT-SoVITS |
 
 
 下面我们将逐一介绍上述被标星`*`的项目，我们也将定期维护上述列表！
