@@ -354,8 +354,7 @@ $$\hat{y}=G(f^{-1}_ {\theta}(e|\hat{s})|\hat{s})$$
 
 ------
 
-#### VITS2: Improving Quality and Efficiency of Single-Stage Text-to-Speech with
-Adversarial Learning and Architecture Design
+#### VITS2: Improving Quality and Efficiency of Single-Stage Text-to-Speech with Adversarial Learning and Architecture Design
 
 !> arxiv(2023): https://arxiv.org/abs/2307.16430
 
@@ -475,14 +474,96 @@ Figure 2 shows an actual attention score map and the receptive field of the conv
 
 ------
 
-### 2. Char2Wav
+### 2. Char2Wav:END-TO-END SPEECH SYNTHESIS
+
+<!-- 2017 -->
+<!-- https://blog.ailemon.net/2020/08/17/paper-share-char2wav-tts/ -->
+
+<!-- https://blog.csdn.net/qq_40168949/article/details/96437321 -->
+
+<!-- https://blog.csdn.net/weixin_34417635/article/details/92499763 -->
+
+!> 2017 ICLR 作者中有 Yoshua Bengio，包括SampleRCNN（2017）,WaveNet(2016)都是比较早期的用RNN做端到端语音合成的方法，这些方法从现在看可能不是最优的方式，但是其paper也是值得我们去学习的。
+
+!> paper: https://openreview.net/forum?id=B1VWyySKx
+
+!> github: https://github.com/sotelo/parrot
+
+!> demo: http://josesotelo.com/speechsynthesis
 
 
+#### Abstract
+
+Char2Wav是端到端的语音合成模型，包括两个模块： reader和neural vocoder。 reader是一个带有attention的encoder-decoder模型，encoder是一个双向的RNN,输入为text或phonemes,decoder是带有attention的RNN用来产生声码器声学特征。neural vocoder是指 SampleRNN 的一种条件式的扩展，其可以根据中间表征（intermediate representations）生成原始的声波样本（Neural
+vocoder refers to a conditional extension of SampleRNN which generates raw
+waveform samples from intermediate representations）。与用于语音合成的传统模型不同，Char2Wav 可以学习直接根据文本生成音频。
+
+#### 1.Introduction
+
+语音合成的主要任务包括将文本映射为音频信号。语音合成有两个主要目标：**可理解性**和**自然度**。可理解性是指合成音频的清晰度，特别是听话人能够在多大程度上提取出原信息。自然度则描述了无法被可理解性直接获取的信息，比如听的整体容易程度、全局的风格一致性、地域或语言层面的微妙差异等等。
+
+传统的语音合成方法是将这个任务分成两个阶段来完成的。第一个阶段被称为前端（frontend）是将文本转换为语言特征，这些特征通常包括音素、音节、词、短语和句子层面的特征（Zen, 2006; Zen et al., 2013; van den Oord et al., 2016）。第二个阶段被称为后端（backend），以前端所生成的语言特征为输入来生成对应的声音。WaveNet（van den Oord et al., 2016）就是一种可实现高质量的「神经后端（neural backend）」的方法。要更加详细地了解传统的语音合成模型，我们推荐参阅 Taylor ( 2009 ) 。
+
+定义好的语言特征通常需要耗费大量时间，而且不同的语言也各有不同。在本论文中，我们将前端和后端整合到了一起，可以通过端到端的方式学习整个过程。这个流程消除了对专业语言学知识的需求，这就移除了在为新语言创建合成器时所面临的一个主要瓶颈。我们使用了一个强大的模型来从数据中学习这种信息。
 
 
+#### 2.Related Work
+
+基于注意力的模型之前已经在机器翻译（Cho et al., 2014; Bahdanau et al., 2015）、语音识别（Chorowski et al., 2015; Chan et al., 2016）和计算机视觉（Xu et al. 2015）等领域得到了应用。我们的工作受到了 Alex Graves ( Graves, 2013; 2015 ) 的工作很大的影响。在一个客座讲座中，Graves 展示了一个使用了一种注意机制的语音合成模型，这是他之前在手写生成方面的研究成果的延伸。不幸的是，这个延伸工作没有被发表出来，所以我们不能将我们的方法和他的成果进行直接的比较。但是，他的结果给了我们关键的启发，我们也希望我们的成果能有助于端到端语音合成的进一步发展。
+
+#### 3.Model Description
+
+##### 3.1 reader
+
+我们采用了 Chorowski et al.( 2015 ) 的标记法。一个基于注意力的循环序列生成器（ARSG/attention-based recurrent sequence generator）是指一种基于一个输入序列 $X$ 生成一个序列 $Y= ( y_1, . . . , y_T ) $的循环神经网络。$X$被一个编码器预处理输出一个序列 $h = ( h_1, . . . , h_L )$ 。在本研究中，输出 $Y$是一个声学特征的序列，而 $X$ 则是文本或要被生成的音素序列。此外，该编码器是一个双向循环网络。
+
+<div align=center>
+    <img src="zh-cn/img/ch4/03/p1.png" /> 
+</div>
+
+##### 3.2 Neural Vocoder
+
+语音合成的质量会受到vocoder的限制，为了确保高质量的输出，用SampleRNN- a learned parametric neural module.
+SmapleRNN用于建模extremely长时依赖性，其中的垂直结构用于捕捉序列不同时刻的动态。捕捉长的audio step（词级别）和短的audio step之间的长相关很重要。
+使用conditional version model学习vocoder 特征序列和对应audio sample之间的映射，每一个时刻的输出取决于它的vocoder特征和过去时刻的输出。
+
+
+!> 这里补充一些SampleRCNN：https://arxiv.org/abs/1612.07837 的介绍
+
+SampleRNN是“无条件的端到端的神经音频生成模型 An Unconditional End-to-End Neural Audio Generation Model”，由Soroush Mehri，Kundan Kumar，Ishaan Gulrajani，Rithesh Kumar，Shubham Jain，Jose Manuel Rodriguez Sotelo，Aaron Courville和Yoshua Bengio发明。正如描述所说，这个模型就像WaveNet一样，是一个用于逐个样本（sample-by-sample）生成音频的端到端模型。
+
+与基于卷积层的WaveNet不同，SampleRNN基于循环层。据作者说，GRU单元效果最好，但可以使用任何类型的RNN单元。这些层layers被分组为“tiers”。这些tiers构成了一个层次结构：在每个tier中，单个时间步的输出，通过学习的上采样upsampling，从较低的tier调整几个时间步。因此，不同的tiers以不同的时钟速率运行，这意味着它们可以学习不同的抽象级别。例如，在最低tier中，一个时间步长对应于一个样本，而在最高层中，一个时间步长可以对应于四分之一秒，其可以包括一个或甚至几个单音notes。这样我们可以从表示作为一系列单音notes到一系列原始样本samples。此外，每个tier中的每个时间步长都由在同一tier中的先前时间步长中生成的样本来调节。最低tier不是recurrent的，而是一个自回归autoregressive的多层感知器MLP（multi-layer perceptron），由几个最后的样本和更高tier的输出决定。
+
+让我们看一个例子（原始论文中的图例）：
+
+<div align=center>
+    <img src="zh-cn/img/ch4/03/p2.png" /> 
+</div>
+
+这里我们有3个tier。最低的一个是MLP，它将最后一个样本作为输入，从中间tier作为上采样输出。中间tier从最低tier开始，调整4个时间步长，并将最后生成的样本和最高tier的上采样输出作为输入。最高tier 调整了距离中间tier 4个时间步长，并将最后生成的16个样本作为输入，这是该tier的前一个时间步长生成的样本总数。
+
+正如我们所看到的，这个模型很容易理解，因为它包含由上采样层分离的众所周知的recurrent layers，它们是普通的线性变换，以及一个多层感知器MLP。它的计算成本也很便宜，因为只有最低tier 在样本级别运行，而在较高级别会运行较慢，因此它们对总体计算时间的消耗较小。相比之下，WaveNet需要为每个样本计算每个layer的输出。
+
+
+#### 4.Training Details
+
+先分别训练reader和vocoder，reader的输出目标是WORLD特征，vocoder的输入是WORLD特征。最后，end-to-end的fine-tune整个模型。
+
+#### 5.Results
+
+我们目前不提供对结果的全面定量分析(估计是效果不好)，仅提供了一些demo的样例，下图提供了我们的模型的合成的语音以及与文本的对齐的可视化。
+
+<div align=center>
+    <img src="zh-cn/img/ch4/03/p3.png" /> 
+</div>
+
+
+------
 
 
 ### 3. ClariNet
+
+<!-- 百度 2019 -->
 
 
 ### 4. FastSpeech 2s
@@ -491,12 +572,19 @@ Figure 2 shows an actual attention score map and the receptive field of the conv
 
 ### 5. EATS
 
+<!-- 2021：  END-TO-END ADVERSARIAL TEXT-TO-SPEECH-->
+
+!> arxiv(2021): https://arxiv.org/abs/2006.03575
+
 
 ### 6. Wave-Tacotron
 
+<!-- google 2021 -->
 
 ### 7. JETS
 
-!> https://arxiv.org/pdf/2203.16852.pdf
+<!-- 2020 -->
+
+!> arxiv(2020): https://arxiv.org/pdf/2203.16852.pdf
 
 
