@@ -483,13 +483,17 @@ Figure 2 shows an actual attention score map and the receptive field of the conv
 
 <!-- https://blog.csdn.net/weixin_34417635/article/details/92499763 -->
 
-!> 2017 ICLR 作者中有 Yoshua Bengio，包括SampleRCNN（2017）,WaveNet(2016)都是比较早期的用RNN做端到端语音合成的方法，这些方法从现在看可能不是最优的方式，但是其paper也是值得我们去学习的。
+!> 2017 ICLR 作者中有 Yoshua Bengio，包括SampleRNN（2017）,WaveNet(2016)[两个都是声码器]，这些方法从现在看可能不是最优的方式，但是其paper也是值得我们去学习的。
 
 !> paper: https://openreview.net/forum?id=B1VWyySKx
 
 !> github: https://github.com/sotelo/parrot
 
 !> demo: http://josesotelo.com/speechsynthesis
+
+!> arxiv(SampleRNN 2017): https://arxiv.org/abs/1612.07837
+
+!> arxiv(WaveNet 2016): https://arxiv.org/abs/1609.03499
 
 
 #### Abstract
@@ -557,18 +561,232 @@ SampleRNN是“无条件的端到端的神经音频生成模型 An Unconditional
     <img src="zh-cn/img/ch4/03/p3.png" /> 
 </div>
 
-
 ------
 
 
-### 3. ClariNet
+### 3. ClariNet:ParallelWave Generation in End-to-End Text-to-Speech
 
 <!-- 百度 2019 -->
+
+!> arxiv(ICLR 2019): https://arxiv.org/abs/1807.07281
+
+!> demo: https://clarinet-demo.github.io/
+
+!> github(非官方): https://github.com/ksw0306/ClariNet
+
+!> arxiv(Parallel WaveNet 2018): https://arxiv.org/abs/1711.10433
+
+!> 这篇paper看的真是一知半解！我们的目的也是仅了解这些paper中的方法，在真是的产品中大概率效果不好！
+
+
+#### Abstract
+
+在这项工作中，我们提出了一种通过WaveNet生成parallel wave的新解决方案。与parallel WaveNet (van den Oord et al., 2018)相比，we distill a Gaussian inverse autoregressive flow from the autoregressive WaveNet by minimizing a regularized KL divergence between their highly-peaked output distributions. 我们的方法以封闭形式计算 KL 散度，这简化了训练算法并提供了非常有效的蒸馏。此外，我们还引入了第一个用于语音合成的text到wave的神经网络架构,它是完全卷积的，可以从头开始进行快速的端到端训练。它的性能明显优于之前将文本到频谱图模型连接到单独训练的 WaveNet 的管道（Ping et al.， 2018）。我们还成功蒸馏了一个parallel waveform合成器，它以这个端到端的模型的hidden represent 作为条件（We also successfully distill a parallel waveform synthesizer conditioned on the hidden representation in this end-to-end model. ）。
+
+#### 1.Inroduction
+
+语音合成，也称为文本转语音 （TTS），传统上是通过复杂的多阶段手动工程实现的 （Taylor， 2009）。TTS 深度学习方法最近的成功导致了高保真语音合成（van den Oord et al.， 2016a），更简单的“端到端”pipeline（Sotelo et al.， 2017;Wang et al.， 2017;Ping et al.， 2018）和再现数千种不同声音的单个 TTS 模型（Ping et al.， 2018）。
+
+WaveNet （van den Oord et al.， 2016a） 是一种用于波形合成的自回归生成模型。它以原始音频的非常高的时间分辨率（例如，每秒 24,000 个样本）运行。它的卷积结构通过teacher-forcing完整的音频样本序列来实现训练中的并行处理。然而，WaveNet 的自回归特性使其推理速度非常慢，因为每个样本都必须从输出分布中提取，然后才能在下一个时间步作为输入传入。为了实时生成高保真语音，必须开发高度工程化的推理内核（例如，Arık et al.， 2017a）。
+
+最近，van den Oord et al. （2018） 提出了一个教师-学生框架，从自回归教师 WaveNet 中蒸馏一个并行前馈网络。非自回归学生模型可以比实时快 20 倍的速度生成高保真语音。为了在蒸馏过程中通过随机样本进行反向传播，并行 WaveNet 采用 the mixture of logistics (MoL) distribution（Salimans等 人，2017 年）作为教师 WaveNet 的输出分布。and a logistic distribution based inverse autoregressive flow (IAF) (Kingma et al., 2016) as the student model. 它最小化了一组损失，包括 student 和 teacher 网络的输出分布之间的 KL 散度。然而，必须应用蒙特卡洛方法来近似 Logistic 分布和 MoL 分布之间棘手的 KL 散度，这可能会在高度峰值分布的梯度中引入较大的方差，并导致实践中的训练不稳定。[parrel wavenet 的缺点]
+
+在这项工作中，我们提出了一种基于高斯 IAF 的新型parrel wave生成方法。具体来说，我们做出了以下贡献：
+
+1. 我们证明，单个方差界高斯(a single variance-bounded Gaussian )足以在 WaveNet 中对原始波形进行建模，而不会降低音频质量。与parrel WaveNet 中的量化代理损失(quantized surrogate loss) （Salimans et al.， 2017） 相比，我们的高斯自回归 WaveNet(Gaussian autoregressive WaveNet) 只是用最大似然估计 （MLE） 进行训练。
+2. 我们通过最小化它们的峰值输出分布之间的正则化 KL 散度，从自回归 WaveNet 中提炼出一个高斯 IAF。我们的方法提供了 KL 散度的封闭式估计，这在很大程度上简化了蒸馏算法并稳定了训练过程。
+3. 在以前的研究中，“端到端”语音合成实际上是指具有单独波形合成器（即声码器）的文本到频谱图模型（Sotelo et al.， 2017;Wang et al.， 2017）。 我们推出了第一个用于 TTS 的text到wave的神经网络架构，它是完全卷积的，支持从头开始的快速端到端训练。在我们的架构中，WaveNet 模块以隐藏状态而不是梅尔频谱图为条件（Ping et al.， 2018;Shen et al.， 2018），这对于从头开始训练的成功至关重要。我们的文本到波形模型在自然度方面明显优于单独训练的pipeline（Ping et al.， 2018）。
+4. 我们还成功地蒸馏了一个并行神经声码器，该声码器以端到端架构中学习的隐藏表示为条件。与具有自回归声码器的模型相比，具有并行声码器的文本到波形模型获得了有竞争力的结果。
+
+我们将本文的其余部分组织如下。第 2 节讨论了相关工作。我们在第 3 节中提出了parrel wave的生成方法，并在第 4 节中介绍了text到wave的架构。我们在第 5 节报告实验结果，在第 6 节总结论文。
+
+
+#### 2.Related Work
+
+神经语音合成已经获得了最先进的结果，最近引起了很多关注。提出了几种神经 TTS 系统，包括 Deep Voice 1 （Arık et al.， 2017a）、Deep Voice 2 （Arık et al.， 2017b）、Deep Voice 3 （Ping et al.， 2018）、Tacotron （Wang et al.， 2017）、Tacotron 2 （Shen et al.， 2018）、Char2Wav （Sotelo et al.， 2017）和 VoiceLoop （Taigman et al.， 2017） 2018）. Deep Voice 1 & 2保留了传统的TTS管道，该管道具有单独的字素到音素、音素持续时间、基频和波形合成模型。相比之下，Deep Voice 3、Tacotron 和 Char2Wav 采用基于注意力的序列到序列模型（Bahdanau et al.， 2015），从而产生更紧凑的架构。在文献中，这些模型通常被称为 “端到端” 语音合成。然而，它们实际上依赖于传统的声码器（Morise et al.， 2016）、Griffin-Lim 算法（Griffin 和 Lim，1984）或单独训练的神经声码器（Ping et al.， 2018;Shen et al.， 2018）将预测的频谱图转换为原始音频。在这项工作中，我们提出了第一个基于 Deep Voice 3 的 TTS  text到wave的神经架构 （Ping et al.， 2018）。
+
+基于神经网络的声码器，如 WaveNet （van den Oord et al.， 2016a） 和 SampleRNN （Mehri et al.， 2017），在语音合成的最新进展中发挥着非常重要的作用。在 TTS 系统中，WaveNet 可以以语言特征、基频 （ 
+$F_0$）、音素持续时间（van den Oord et al.， 2016a;Arık et al.， 2017a） 或来自文本到频谱图模型预测的梅尔频谱图（Ping et al.， 2018）作为输入。我们通过在 梅尔频谱图和端到端模型中的隐藏表示上对其进行调节来测试我们的parallel waveform合成方法。
+
+标准化流(Normalizing flows)（Rezende 和 Mohamed，2015 年;Dinh et al.， 2014）是一系列随机生成模型，其中通过应用一系列可逆变换，将简单的初始分布转换为更复杂的初始分布。归一化流提供了任意复杂的后验分布，使其非常适合变分自动编码器中的推理网络（Kingma 和 Welling，2014）。逆自回归流 （IAF） （Kingma et al.， 2016） 是一种特殊类型的归一化流，其中每个可逆变换都基于自回归神经网络。因此，IAF 可以重用最成功的自回归架构，例如 PixelCNN 和 WaveNet（van den Oord et al.， 2016b， a）。学习具有最大可能性的 IAF 可能非常缓慢。在这项工作中，我们通过最小化 KL 散度的数值稳定变体，从预训练的自回归生成模型中提炼出高斯 IAF。
+
+知识蒸馏最初是为了将大模型压缩成小模型而提出的（Bucilua et al.， 2006）。在深度学习中（Hinton et al.， 2015），通过最小化学生输出之间的损失（例如，L2 或交叉熵），从教师网络中提炼出一个较小的学生网络。在parallel WaveNet 中，通过最小化反向 KL 散度(reverse KL divergence (Murphy, 2014).)，从自回归 WaveNet 中提炼出非自回归学生网 （Murphy， 2014）。类似的技术也应用于机器翻译的非自回归模型（Gu et al.， 2018;Kaiser等 人，2018 年;Lee等 人，2018 年;Roy et al.， 2018）。
+
+
+#### 3. Parallel Wave Generation
+
+在本节中，我们将高斯自回归 WaveNet 作为教师网，将高斯逆自回归流作为学生网。然后，我们开发我们的知识蒸馏算法。
+
+##### 3.1 Gaussian Autoregressive WaveNet
+
+WaveNet使用条件概率的链式法则将高维的waveform $x=\\{x_1,...,x_T\\}$建模为条件分布的乘积：
+$$p(x|c;\theta)=\prod^{T}_ {t=1}p(x_t|x_{< t},c;\theta)$$
+
+这里的$c$是一个条件（例如，第4节中的mel-spectrogram或hidden state),$\theta$是模型参数，自回归的Wavenet将$x_{ < t }$作为输入，输出$x_t$的概率分布。
+
+Parallel WaveNet (van den Oord et al., 2018) 主张在PixelCNN++中使用mixture of logitic (MoL) distribution 用于自回归教师网络。因为与分类分布（例如，16 位音频的 65,536 个 softmax 单位）相比，它需要的输出单元要少得多。实际上，student-net 的输出分布需要在样本𝒙上可区分，并允许在蒸馏中从教师到学生的反向传播。因此，还需要为教师 WaveNet 选择连续分布。直接最大化 MoL 的对数似然容易出现数值问题，并且必须采用 PixelCNN++ 中引入的量化代理损失（quantized surrogate loss ）。
+
+在这项工作中，我们证明了 WaveNet 的单个高斯输出分布足以对原始波形进行建模。这可能会引起建模能力的担忧，因为我们使用单个高斯分布而不是高斯分布的混合（Chung et al.， 2015）。我们将在实验中证明它们的可比性能。具体来说，给定先前样本$x_t$的条件 
+分布为，
+
+<div align=center>
+    <img src="zh-cn/img/ch4/04/p1.png" /> 
+</div>
+
+其中$\mu(x_{ < t};\theta)$和$\sigma(x_{ < t};\theta)$分别是自回归WaveNet预测的平均值和标准差。在实践中，该网络在对数尺度$\log \sigma (x_{ < t })$上进行预测和操作，以实现数值稳定性。给定观察到的数据，我们对$\theta$进行最大似然估计。请注意，该模型可能会给出没有实值噪声(即$\mu(x{ < t } \approx x_t)$)的16位离散$x_t$非常准确的预测，那么当可以自由最小化$\sigma(x_{ < t})$时，对数似然计算可能会变的数值不稳定。因此，训练过程中对$\log \sigma(x_{ < t})$的预测进行裁剪。
+
+在附录A中我们讨论了裁剪到对数尺度的常数的重要性。我们还尝试了反量化技巧，像16位样本添加俊宇噪声$\mu \in [0,\frac{2}{65526}]$,类似于图像建模(e.g., Uria et al., 2013)。事实上，这些技巧是等效的，因为他们都上界了对量化数据进行建模的连续似然。我更喜欢clipping技巧，因为他显式控制模型行为并简化了概率密度蒸馏。
+
+
+##### 3.2 Gaussian Inverse Autoregressive Flow (IAF)
+
+标准化流（Normalizing flows）（Rezende 和 Mohamed，2015 年;Dinh et al.， 2017）通过应用可逆变换 $x=f(z)$ 将简单初始密度$q)z)$（例如，各向同性高斯）映射到复数初始密度。
+$f$是一个双射，可以通过变量的更改公式得到$x$的分布：
+
+<div align=center>
+    <img src="zh-cn/img/ch4/04/p2.png" /> 
+</div>
+
+
+其中$det(\frac{\partial f(z)}{\partial z})$是雅可比行列式，通常计算成本很高。逆自回归流（IAF）（Kingma et al.， 2016） 是一种特殊的归一化流，具有简单的雅可比行列式。在IAF中，$z$和$x$维度相同，并且变换基于一个自回归的网络，以$z$为输入：$x_t=f(z_{ < t };\phi)$,其中$\phi$是模型参数。注意，第$t$个变量$x_t$仅取决于先前和当前的潜在变量$z_{ < t }$,因此雅可比矩阵是一个三角矩阵，行列式是对角巷的乘积，
+
+<div align=center>
+    <img src="zh-cn/img/ch4/04/p3.png" /> 
+</div>
+
+这很容易计算。Parallel WaveNet （van den Oord et al.， 2018） 使用基于single logistic distribution的 IAF 来匹配教师网络的nixture of logistics distribution(MoL)。
+
+我们使用高斯IAF（Kingma et al.， 2016）并将其转为$x_t=f(z_{\leq t};\phi)$定义为：
+
+<div align=center>
+    <img src="zh-cn/img/ch4/04/p4.png" /> 
+</div>
+
+
+其中，位移函数$\mu(z_{ < t };\phi)$和缩放函数$\sigma(z_{< t};\phi)$由第 3.1 节中的自回归 WaveNet 建模。IAF的变换在给定$z$的提艾签下是并行计算$x$的。从而有效利用 GPU 等资源。重要的是，如果我们假设$z_t \sim N(z_t| \mu_0,\sigma_0)$,很容易的观察到$x_t$也是遵循高斯分布的,
+
+<div align=center>
+    <img src="zh-cn/img/ch4/04/p5.png" /> 
+</div>
+
+其中，$\mu_q=\mu_0 \times \sigma(z_{ < t};\phi) + \mu(z_{< t};\phi)$和$\sigma_q=\sigma_0 \times \sigma(z_{< t};\phi)$，Note that 
+𝒙 are highly correlated through the marginalization of latents 𝒛, and the IAF jointly models 𝒙 at all timesteps.
+
+为了评估 观测数据 𝒙 的可能性 ，我们可以使用恒等式 （3） 和 （4），并插入方程 （5） 中定义的变换，这将得到，
+
+<div align=center>
+    <img src="zh-cn/img/ch4/04/p6.png" /> 
+</div>
+
+但是，需要方程 （5） 中的逆变换$f^{-1}$，
+
+
+
+<div align=center>
+    <img src="zh-cn/img/ch4/04/p7.png" /> 
+</div>
+
+从观察到的 𝒙计算相应的𝒛 ，这是自回归且缓慢的。因此，直接通过最大似然法学习 IAF 可能非常缓慢。
+
+通常，规范化流需要一系列转换，直到分布 $q(x;\phi)$ 达到所需的复杂程度。首先，我们从各向同性高斯分布 $N(0,I)$中抽取一个白噪声样本 $z^{(0)}$。然后，我们重复应用方程 （5） 中定义的变换 
+
+<div align=center>
+    <img src="zh-cn/img/ch4/04/p8.png" /> 
+</div>
+
+我们在算法 1 中总结了此过程。请注意，这些参数不会在不同的流之间共享。
+
+<div align=center>
+    <img src="zh-cn/img/ch4/04/p9.png" /> 
+</div>
+
+##### 3.3 Knowledge Distillation
+
+###### 3.3.1 Regularized KL Divergence
+
+van den Oord et al. （2018） 提出了概率密度蒸馏法，以规避 IAF 最大似然学习的困难。 在蒸馏中，目标是最小化学生 IAF 和预训练教师 WaveNet 之间的序列水平反向 KL 散度。这种序列水平的 KL 散度可以通过从IAF中采样𝒛和 𝒙=f(𝒛)进行近似。但它可能会表现出高方差。可以通过边缘化每个时间步的提前一步预测来减少该估计的方差（van den Oord et al.， 2018）。但是，并行 WaveNet 必须在每个时间步长运行单独的蒙特卡洛采样，因为logistics和mixture of logistics之间的每个时间步长 KL 差异仍然很棘手。Indeed, parallel WaveNet first draws a white noise sample 𝒛, then it draws multiple different samples $x_t$ from $q(x_t|z_{< t})$ to estimate the intractable integral. Our method only need to draw one sample 𝒛, then it computes the KL divergence in closed-form thanks to the Gaussian setup.
+ 
+给定一个白噪声样本 𝒛，算法 1 输出样本 $x=f(z)$，以及具有均值 $\mu_q$和标准差$\sigma_q$ 的输出高斯分布 $\sigma_q q(x_t|z_{< t};\phi)$.
+ 我们将样本 𝒙 输入到自回归 WaveNet 中，并获得其具有均值 $\mu_p$和标准差$\sigma_q$的输出分布 $\sigma_q q(x_t|z_{< t};\theta)$
+。可以证明学生的输出分布和教师的输出分布之间的每时间步 KL 散度 具有封闭式表达式
+
+<div align=center>
+    <img src="zh-cn/img/ch4/04/p10.png" /> 
+</div>
+
+这也形成了对学生分布$q(x)$和教师$p(x)$之间序列水平 KL 差异的无偏估计。
+
+
+In this submission, we lower bound $\log \sigma_p$ and $\log \sigma_q$ at -7 before calculating the KL divergence. 
+
+<div align=center>
+    <img src="zh-cn/img/ch4/04/p11.png" /> 
+</div>
+
+##### 3.3.2 STFT Loss
+
+在知识蒸馏中，通常的做法是使用真实数据集来合并额外的损失（例如，Kim 和 Rush，2016）。实证上，我们发现仅用 KL 散度损失训练学生 IAF 会导致whisper voices。 van den Oord et al. （2018） 主张用平均功率loss(average power loss )来解决这个问题，这实际上在他们的实验中与训练音频剪辑的长度较短（即 
+0.32s）相结合。随着裁剪长度的增加，平均功率损失的效果会降低。相反，我们计算学生 IAF 的输出样本 𝒙与相应的真实音频 $𝒙_n$之间的帧级损失:
+
+<div align=center>
+    <img src="zh-cn/img/ch4/04/p13.png" /> 
+</div>
+
+其中 $|STFT(x)|$是短期傅里叶变换 （STFT） 的幅度 B=1025是我们将 FFT 大小设置为 2048时的频率区间数。我们使用 12.5ms 移帧、 50ms 窗口长度和 Hanning 窗口。我们最终的损失函数是平均 KL 散度和帧级损失的线性组合，我们只需在所有实验中将它们的系数设置为 1。
+
+
+#### 4.Text-to-Wave Architecture
+
+在本节中，我们将介绍我们的全卷积文本到波形架构（参见图 Fig2 （a）） 用于端到端 TTS。我们的架构基于 Deep Voice 3 （DV3），这是一种基于卷积注意力的 TTS 系统 （Ping et al.， 2018）。DV3 能够将文本特征（例如字符、音素和重音）转换为频谱特征（例如，对数梅尔频谱图和对数线性频谱图）。这些频谱特征可以用作单独训练的波形合成模型（如 WaveNet）的输入。相比之下，我们从注意力机制中学到的隐藏表示，通过一些中间处理直接提供给 WaveNet，端到端地从头开始训练整个模型。
+
+<div align=center>
+    <img src="zh-cn/img/ch4/04/p14.png" /> 
+</div>
+
+请注意，根据隐藏表示来调节 WaveNet 对于从头开始训练的成功至关重要。事实上，我们试图根据 DV3 预测的梅尔频谱图来限制 WaveNet，因此 WaveNet 损失的梯度可以通过 DV3 反向传播，以改进文本到频谱图模型。当整个模型从头开始训练时，我们发现它的性能比单独的训练管道略差。主要原因是 DV3 预测的梅尔频谱图在早期训练时可能不准确，并可能破坏 WaveNet 的训练。为了获得满意的结果，需要预训练 DV3 和 WaveNet，然后微调整个系统（例如，Zhao et al.， 2018）。
+
+架构由四个组件组成：
+
++ Encoder：与 DV3 中的卷积编码器相同，它将文本特征编码为内部隐藏表示形式。
++ Decoder：DV3 中的因果卷积解码器，它以自回归的方式将编码器表示解码为 log-mel 频谱图。
++ Bridge-net：一个卷积中间处理块，用于处理来自解码器的隐藏表示并预测对数线性频谱图。与解码器不同，它是非因果性的，因此可以利用未来的上下文信息。此外，它还将 hidden 表示从 frame level 上采样到 sample-level。
++ 声码器（Vocoder）：用于合成波形的高斯自回归 WaveNet，它以桥接网的上采样隐藏表示为条件。这个组件可以被从 autoregressive vocoder 提炼出来的学生 IAF 替换。
+
+整体目标函数是解码器、桥接网络和声码器损失的线性组合;我们只是在实验中将所有系数设置为 1。我们引入了 bridge-net 来利用未来的时间信息，因为它可以应用非因果卷积。我们架构中的所有模块都是卷积的，可以实现快速训练。 并缓解了基于 RNN 的模型中的常见困难（例如，梯度消失和爆炸问题（Pascanu et al.， 2013））。在整个模型中，我们使用来自 DV3 的卷积块（参见Fig 2（c）） 作为基本构建块。它由一个带有门控线性单元 （GLU） 的一维卷积和一个残差连接组成。在所有实验中，我们将 dropout 概率设置为 0.05。我们将在以下小节中提供更多详细信息。
+
+
+##### 4.1 Encoder-Decoder
+
+我们使用与 DV3 相同的编码器-解码器架构（Ping等 人，2018 年）。编码器首先将字符或音素转换为可训练的嵌入，然后是一系列卷积块来提取长距离文本信息。解码器自回归预测具有 L1 损失的 log-mel 频谱图（训练时教师强迫）。它从 1x1 卷积层开始，对输入 log-mel 频谱图进行预处理，然后应用一系列因果卷积和注意力。在字符嵌入和 log-mel 频谱图之间学习基于多跳注意力的对齐。
+
+
+##### 4.2 Bridge-net
+
+解码器的隐藏状态被馈送到 bridge-net 进行时间处理和上采样。然后将输出的隐藏表示馈送到声码器进行波形合成。 Bridge-net 由一堆卷积块和两层转置的 2-D 卷积组成，与 softsign 交错，以将每个时间步的隐藏表示从每秒 80 个上采样到每秒 24,000 个。时间上的上采样步幅分别为 15和 20对于两个层。相应地，我们将 2-D 卷积滤波器大小设置为 (30,3)和 (40,3)，其中滤波器大小（在时间上）从步幅中增加一倍，以避免棋盘伪影(checkerboard artifacts)（Odena et al.， 2016）。
+
+
+#### 5.Experiment
+
+<div align=center>
+    <img src="zh-cn/img/ch4/04/p15.png" /> 
+</div>
+
+数据来自于百度研究院的内部数据的测试，结果的可信性值得怀疑。
+
+
+#### 6.Conclusion
+
+在这项工作中，我们首先证明了单个高斯输出分布足以在 WaveNet 中对原始波形进行建模，而不会降低音频质量。然后，我们提出了一种基于高斯逆自回归流 （IAF） 的平行波生成方法，其中 IAF 是通过最小化高度峰值分布的正则化 KL 散度从自回归 WaveNet 中提炼出来的。与并行 WaveNet 相比，我们的蒸馏算法以封闭形式估计 KL 散度，并在很大程度上稳定了训练过程。此外，我们提出了第一个用于 TTS 的text到wave的神经网络架构，它可以以端到端的方式从头开始训练。我们的文本到波形架构优于单独训练的管道，并为完全端到端的 TTS 开辟了研究机会。我们还通过提炼一个以端到端模型中的隐藏表示为条件的并行神经声码器来展示吸引人的结果。
+
+
+------
 
 
 ### 4. FastSpeech 2s
 
 参考:[FastSpeech V2](zh-cn/03_Text_to_spectrogram?id=_9-fastspeech-2-fast-and-high-quality-end-to-end-text-to-speech)
+
+
 
 ### 5. EATS
 
@@ -580,6 +798,9 @@ SampleRNN是“无条件的端到端的神经音频生成模型 An Unconditional
 ### 6. Wave-Tacotron
 
 <!-- google 2021 -->
+
+
+
 
 ### 7. JETS
 
